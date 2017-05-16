@@ -16,20 +16,110 @@
 # array will be printed as comma-separated values on a new line of the output
 # file, and the routine will revert to its initial state.
 
-from collections import namedtuple
-Config = namedtuple("Config", "baud num leng freq")
+import sys
+import glob
+import serial
+import argparse
+import datetime
+from threading import Thread
 
-def load_config(filename):
-    with open(filename, 'r') as configfile:
-        lines = configfile.readlines()
-        baud = int(lines[0].split('=')[1])
-        num = int(lines[1].split('=')[1])
-        leng = int(lines[2].split('=')[1]) + num + 1
-        freq = int(lines[3].split('=')[1])
-    return Config(baud, num, leng, freq)
 
+def serial_ports():
+    """ Lists serial port names
+
+        :raises EnvironmentError:
+            On unsupported or unknown platforms
+        :returns:
+            A list of the serial ports available on the system
+    """
+    if sys.platform.startswith('win'):
+        ports = ['COM%s' % (i + 1) for i in range(256)]
+    elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+        # this excludes your current terminal "/dev/tty"
+        ports = glob.glob('/dev/tty[A-Za-z]*')
+    elif sys.platform.startswith('darwin'):
+        ports = glob.glob('/dev/tty.*')
+    else:
+        raise EnvironmentError('Unsupported platform')
+
+    result = []
+    for port in ports:
+        try:
+            s = serial.Serial(port)
+            s.close()
+            result.append(port)
+        except (OSError, serial.SerialException):
+            pass
+    return result
+
+
+def record_data(ser):
+    """ Read data from opened serial port ser and outputs to a file whose name
+        is the current time.
+        Adds the first line as column headings
+    """
+    filename = datetime.datetime.now().strftime("data_%y-%m-%d_%H%M-%S") + ".csv"
+    with open(filename, 'w') as output:
+        samples = 0
+        h = 'fc' # header value --- 0xFC
+        h1 = ''
+        h2 = ''
+        output.write("OCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+        ser.reset_input_buffer()
+
+        while ser.is_open and record:
+            if ser.in_waiting:
+                h2 = ser.read().encode('hex')
+                if (h2 == h) and (h1 == h):
+                    h1 = ''
+                    raw_data = ser.read(10)
+                    output_line = "{},{},{},{},{},{}\n".format(ord(raw_data[0]), ord(raw_data[1]),
+                                                               (ord(raw_data[2])<<8) + ord(raw_data[3]),
+                                                               (ord(raw_data[4])<<8) + ord(raw_data[5]),
+                                                               (ord(raw_data[6])<<8) + ord(raw_data[7]),
+                                                               (ord(raw_data[8])<<8) + ord(raw_data[9]))
+                    output.write(output_line)
+                    samples += 1
+                else:
+                    h1 = h2
+
+        if ser.is_open:
+            ser.close()
+
+        print "Recorded {} samples to {}".format(samples, filename)
+        return None
+
+
+# global (?) code here
+#TODO: make it check the given serial port against the list of attached ports,
+# and tell the user if it doesn't exist. If there's a problem with the 'port'
+# arg, it should print the list of serial ports.
+# It should also reject any baud rates outside the allowed values.
+record = False
+parser = argparse.ArgumentParser()
+parser.add_argument("port", help="the name of the serial port, ie \'COM3\' or \'/dev/ttyS0\'")
+parser.add_argument("-b", "--baudrate",
+                    help="the serial baud rate, ie 19200, 57600, 115200",
+                    type=int, default=115200)
+debug = []
 
 if __name__ == '__main__':
-    cfg = load_config("serial-config.txt")
-    print cfg
+    args = parser.parse_args()
+    if args.port in serial_ports():
+        arduino = serial.Serial()
+        arduino.port = args.port
+        arduino.baudrate = args.baudrate
+        try:
+            arduino.open()
+        except serial.SerialException:
+            print 'Error opening serial port: ' + args.port
+            exit(2)
+        else:
+            print 'connect success!'
+            record = True
+            rec_thread = Thread(target = record_data, args=(arduino, ))
+            rec_thread.start()
+            raw_input("Recording. Press enter to stop...")
+            record = False
+
     exit(0)

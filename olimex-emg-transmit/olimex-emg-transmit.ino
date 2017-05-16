@@ -67,7 +67,7 @@ void setSampleFreq(int freq) {
  * 
  * N should be 64 for a minimum frequency of 488Hz
 */
-  OCRval = constrain(F_CPU / (2 * 64 * freq) - 1, 0, 255);
+  OCRval = constrain((F_CPU) / 2 / 64 / (SAMP_FREQ) - 1, 0, 255);
 
   // clear all timer2 registers
   TCCR2A = 0;
@@ -149,7 +149,6 @@ ISR(TIMER2_COMPA_vect){
   for(i=0;i<12;i++){
     Serial.write(TXData[i]);
   }
-
   // increment packet counter
   TXData[3]++;
 
