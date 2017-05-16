@@ -58,7 +58,7 @@ def record_data(ser):
         is the current time.
         Adds the first line as column headings
     """
-    filename = datetime.datetime.now().strftime("data_%y-%m-%d_%H%M-%S") + ".csv"
+    filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
     with open(filename, 'w') as output:
         samples = 0
         h = 'fc' # header value --- 0xFC
