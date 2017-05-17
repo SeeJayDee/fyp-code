@@ -68,7 +68,7 @@ def record_data(ser):
         output.write("OCRval,count,Ch0,Ch1,Ch2,Ch3\n")
         ser.reset_input_buffer()
 
-        while ser.is_open and record:
+        while ser.is_open and record_switch:
             if ser.in_waiting:
                 h2 = ser.read().encode('hex')
                 if (h2 == h) and (h1 == h):
@@ -94,13 +94,13 @@ def record_data(ser):
 # and tell the user if it doesn't exist. If there's a problem with the 'port'
 # arg, it should print the list of serial ports.
 # It should also reject any baud rates outside the allowed values.
-record = False
+record_switch = False
 parser = argparse.ArgumentParser()
 parser.add_argument("port", help="the name of the serial port, ie \'COM3\' or \'/dev/ttyS0\'")
 parser.add_argument("-b", "--baudrate",
                     help="the serial baud rate, ie 19200, 57600, 115200",
                     type=int, default=115200)
-debug = []
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -111,16 +111,16 @@ if __name__ == '__main__':
         try:
             arduino.open()
             print 'connect success!'
-        except serial.SerialException:
+        except (OSError, serial.SerialException):
             print 'Error opening serial port: ' + args.port
             exit(2)
         else:
             while True:
-                record = True
+                record_switch = True
                 rec_thread = Thread(target = record_data, args=(arduino, ))
                 rec_thread.start()
                 raw_input("Recording. Press enter to stop...")
-                record = False
+                record_switch = False
                 while rec_thread.isAlive():
                     sleep(1)
 
