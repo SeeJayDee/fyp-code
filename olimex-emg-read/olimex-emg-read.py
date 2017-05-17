@@ -22,6 +22,7 @@ import serial
 import argparse
 import datetime
 from threading import Thread
+from time import sleep
 
 
 def serial_ports():
@@ -83,11 +84,9 @@ def record_data(ser):
                 else:
                     h1 = h2
 
-        if ser.is_open:
-            ser.close()
-
         print "Recorded {} samples to {}".format(samples, filename)
-        return None
+
+    return
 
 
 # global (?) code here
@@ -111,15 +110,25 @@ if __name__ == '__main__':
         arduino.baudrate = args.baudrate
         try:
             arduino.open()
+            print 'connect success!'
         except serial.SerialException:
             print 'Error opening serial port: ' + args.port
             exit(2)
         else:
-            print 'connect success!'
-            record = True
-            rec_thread = Thread(target = record_data, args=(arduino, ))
-            rec_thread.start()
-            raw_input("Recording. Press enter to stop...")
-            record = False
+            while True:
+                record = True
+                rec_thread = Thread(target = record_data, args=(arduino, ))
+                rec_thread.start()
+                raw_input("Recording. Press enter to stop...")
+                record = False
+                while rec_thread.isAlive():
+                    sleep(1)
 
+                run = raw_input("\nRecord another sample? [y/N]: ")
+                if not run.lower().lstrip().startswith('y'):
+                    break
+
+
+    if arduino.is_open:
+        arduino.close()
     exit(0)
