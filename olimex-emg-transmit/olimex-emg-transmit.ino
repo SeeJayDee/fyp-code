@@ -116,6 +116,7 @@ void setup() {
   setSampleFreq(SAMP_FREQ);
   pinMode(LED_PIN, OUTPUT);
   pinMode(CAL_SIG_PIN, OUTPUT);
+  analogReference(EXTERNAL);
 
   TXData[0] = HEADER;
   TXData[1] = HEADER;

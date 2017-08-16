@@ -16,6 +16,7 @@
 # array will be printed as comma-separated values on a new line of the output
 # file, and the routine will revert to its initial state.
 
+from pyqtgraph.Qt import QtGui, QtCore
 import sys
 import glob
 import serial
@@ -23,7 +24,12 @@ import argparse
 import datetime
 from threading import Thread
 from time import sleep
+import classes as c
 
+config = {'sampfreq' : 512,
+          'title' : 'EMG Grapher',
+          'width' : 1280,
+          'height' : 800}
 
 def serial_ports():
     """ Lists serial port names
@@ -41,7 +47,7 @@ def serial_ports():
     elif sys.platform.startswith('darwin'):
         ports = glob.glob('/dev/tty.*')
     else:
-        raise EnvironmentError('Unsupported platform')
+        raise EnvironmentError('Unsupported platform.')
 
     result = []
     for port in ports:
@@ -103,32 +109,36 @@ parser.add_argument("-b", "--baudrate",
 
 
 if __name__ == '__main__':
-    args = parser.parse_args()
-    if args.port in serial_ports():
-        arduino = serial.Serial()
-        arduino.port = args.port
-        arduino.baudrate = args.baudrate
-        try:
-            arduino.open()
-            print 'connect success!'
-        except (OSError, serial.SerialException):
-            print 'Error opening serial port: ' + args.port
-            exit(2)
-        else:
-            while True:
-                record_switch = True
-                rec_thread = Thread(target = record_data, args=(arduino, ))
-                rec_thread.start()
-                raw_input("Recording. Press enter to stop...")
-                record_switch = False
-                while rec_thread.isAlive():
-                    sleep(1)
+    if False:
+        args = parser.parse_args()
+        if args.port in serial_ports():
+            arduino = serial.Serial()
+            arduino.port = args.port
+            arduino.baudrate = args.baudrate
+            try:
+                arduino.open()
+                print 'connect success!'
+            except (OSError, serial.SerialException):
+                print 'Error opening serial port: ' + args.port
+                exit(2)
+            else:
+                while True:
+                    record_switch = True
+                    rec_thread = Thread(target = record_data, args=(arduino, ))
+                    rec_thread.start()
+                    raw_input("Recording. Press enter to stop...")
+                    record_switch = False
+                    while rec_thread.isAlive():
+                        sleep(0.1)
 
-                run = raw_input("\nRecord another sample? [y/N]: ")
-                if not run.lower().lstrip().startswith('y'):
-                    break
+                    run = raw_input("\nRecord another sample? [y/N]: ")
+                    if not run.lower().lstrip().startswith('y'):
+                        break
 
 
-    if arduino.is_open:
-        arduino.close()
-    exit(0)
+        if arduino.is_open:
+            arduino.close()
+        exit(0)
+    else:
+        window = c.DisplayWindow(config)
+        QtGui.QApplication.instance().exec_()
