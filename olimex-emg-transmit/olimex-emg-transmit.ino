@@ -27,10 +27,13 @@
 
 
 // All definitions
-#define HEADER 0xfc
-#define SAMP_FREQ 512
+#define HEADER 0xcc
+//#define SAMP_FREQ 512
+#define SAMP_FREQ 256
 #define LED_PIN  13
 #define CAL_SIG_PIN 9
+#define PACKET_SIZE 9
+#define BAUDRATE 115200
 
 #if ( SAMP_FREQ < 488 ) // Sets a flag if prescaler needs changing
 #define SLOW 1
@@ -38,10 +41,12 @@
 
 
 // Gloval constants and variables
-byte OCRval = 0;          // OCR value for sampling freq
-volatile byte TXData[12]; // bytes to be transmitted
-volatile byte i;          // counter variable
+unsigned int OCRval = 0;          // OCR value for sampling freq
+volatile byte TXData[PACKET_SIZE]; // bytes to be transmitted
 volatile int ADC_val;     // current ADC val
+volatile byte state = HIGH;
+volatile byte state2 = HIGH;
+volatile byte count = 3;
 
 
 //~~~~~~~~~~
@@ -67,7 +72,12 @@ void setSampleFreq(int freq) {
  * 
  * N should be 64 for a minimum frequency of 488Hz
 */
-  OCRval = constrain((F_CPU) / 2 / 64 / (SAMP_FREQ) - 1, 0, 255);
+  OCRval = (F_CPU) / 2 / 64 / (SAMP_FREQ) - 1;
+  #ifdef SLOW
+  OCRval >>= 1;
+  #endif
+  OCRval = constrain(OCRval, 0, 255);
+  
 
   // clear all timer2 registers
   TCCR2A = 0;
@@ -77,10 +87,14 @@ void setSampleFreq(int freq) {
   //set timer2 control register values
   TCCR2A |= (1<<WGM21);
   TCCR2B |= (1<<CS22);
+
+//  TCCR2A |= (1<<COM2A1);
+//  TCCR2B |= (1<<FOC2A);
+//  
+//  DDRB |= (1<<3);
 #ifdef SLOW
   // change prescaler to 128, halve calculated OCR val
   TCCR2B |= (1<<CS20);
-  OCRval >>= 1;
 #endif
   TIMSK2 |= (1<<OCIE2A);
   OCR2A = OCRval;
@@ -93,12 +107,19 @@ void setSampleFreq(int freq) {
 /*    Input   :  No                                 */
 /*    Output  :  No                                 */
 /*    Action: Toggles state of an LED and 'CAL' pin */
+/*            every [[count+1]] samples.              */
 /****************************************************/
 void togglePins(){
-  static byte state = HIGH;
-  digitalWrite(LED_PIN, state);
-  digitalWrite(CAL_SIG_PIN, state);
-  state = !state;
+  count--;
+  if (!count){
+    digitalWrite(LED_PIN, state);
+    digitalWrite(CAL_SIG_PIN, state);
+    digitalWrite(11, state);
+    count = 15;
+    state = !state;
+  }
+//  digitalWrite(11, state2);
+//  state2 = !state2;
 }
 
 
@@ -112,17 +133,19 @@ void togglePins(){
 void setup() {
   noInterrupts();
 
-  Serial.begin(115200);
+  Serial.begin(BAUDRATE);
   setSampleFreq(SAMP_FREQ);
   pinMode(LED_PIN, OUTPUT);
   pinMode(CAL_SIG_PIN, OUTPUT);
+  pinMode(11, OUTPUT);
   analogReference(EXTERNAL);
 
   TXData[0] = HEADER;
   TXData[1] = HEADER;
   TXData[2] = OCRval;
-  for (i=3; i<12; i++){
-    TXData[i] = 0;
+  byte j = 0;
+  for (j=3; j<PACKET_SIZE; j++){
+    TXData[j] = 0;
   }
 
   interrupts();
@@ -139,22 +162,37 @@ void setup() {
 /*    Action: Samples ADC at a fixed frequency.     */
 /****************************************************/
 ISR(TIMER2_COMPA_vect){
+  // Disable Timer2 interrupt
+//  TIMSK2 &= ~(1<<OCIE2A);
+  Serial.write(TXData[0]);
+  Serial.write(TXData[1]);
+  Serial.write(TXData[2]);
+  Serial.write(TXData[3]);
   // Read 4 ADC channels
+  byte i = 0;
+  TXData[8] = 0;
   for(i=0;i<4;i++){
     ADC_val = analogRead(i);
-    TXData[4 + 2*i] = (byte)(ADC_val >> 8);
-    TXData[5 + 2*i] = (byte)ADC_val;
+//    ADC_val = 768;
+//    TXData[4 + 2*i] = (byte)(ADC_val >> 8);
+//    TXData[5 + 2*i] = (byte)ADC_val;
+    byte hiBits = (byte)(ADC_val >> 8);
+    TXData[8] |= (hiBits << (2 * i));
+    TXData[4 + i] = (byte)ADC_val;
+    Serial.write(TXData[4 + i]);
   }
-
-  // transmit data
-  for(i=0;i<12;i++){
-    Serial.write(TXData[i]);
-  }
+  Serial.write(TXData[8]);
+//  // transmit data
+//  for(i=0;i<PACKET_SIZE;i++){
+//    Serial.write(TXData[i]);
+//  }
   // increment packet counter
   TXData[3]++;
 
-  // Toggle LED and CAL_SIG_PIN at SAMPFREQ/2
+  // Toggle LED and CAL_SIG_PIN at SAMPFREQ/8
   togglePins();
+  // Enable Timer2 interrupt
+//  TIMSK2 |= (1<<OCIE2A);
 }
 
 
