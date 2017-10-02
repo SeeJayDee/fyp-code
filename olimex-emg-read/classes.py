@@ -33,24 +33,35 @@ class DisplayWindow(object):
         self.mainwin.resize(cfg['width'], cfg['height'])
         self.central_widget = QtGui.QWidget()
         self.mainwin.setCentralWidget(self.central_widget)
+        self.maincontrolbar = {'layout': QtGui.QVBoxLayout()}
         self.top_layout = QtGui.QHBoxLayout()
         self.side_layouts = {'left': QtGui.QVBoxLayout(),
                              'right': QtGui.QVBoxLayout()}
         self.top_layout.addLayout(self.side_layouts['left'])
         self.top_layout.addLayout(self.side_layouts['right'])
+        self.top_layout.addLayout(self.maincontrolbar['layout'])
         self.central_widget.setLayout(self.top_layout)
 
-        # control widgets
+        # maincontrolbar setup
+        self.maincontrolbar['streamctl'] = QtGui.QPushButton('Start streaming')
+        self.maincontrolbar['streamctl'].clicked.connect(self.btn_streamctl_click)
+        self.maincontrolbar['layout'].addWidget(self.maincontrolbar['streamctl'])
+        self.maincontrolbar['layout'].addSpacing(1)
+        self.maincontrolbar['loadcfg'] = QtGui.QPushButton('Load config')
+        self.maincontrolbar['layout'].addWidget(self.maincontrolbar['loadcfg'])
+        self.maincontrolbar['cal'] = QtGui.QPushButton('Calibrate')
+        self.maincontrolbar['layout'].addWidget(self.maincontrolbar['cal'])
+        self.maincontrolbar['layout'].addStretch(1)
 
 
         self.plot_timer = QtCore.QTimer()
         self.plot_timer.timeout.connect(self.update_plots)
         plot_names = cfg['plot_names']
         self.plot_names = plot_names
-        plot_colours = {'L_AS': (255, 111, 055),
-                        'L_AP': (255, 99, 111),
-                        'R_AS': (055, 111, 255),
-                        'R_AP': (111, 99, 255)}
+        plot_colours = {2: (255, 111, 055),
+                        3: (055, 111, 255),
+                        4: (255, 99, 111),
+                        5: (111, 99, 255)}
 
         self.plotwidgets = {}
         self.plotcontrols = {}
@@ -81,7 +92,7 @@ class DisplayWindow(object):
             bar['hbox'].setLayout(bar['layout'])
             self.plotcontrols[plt] = bar
             self.plots[plt] = self.plotwidgets[plt].plot()
-            self.plots[plt].setPen(plot_colours[plt])
+            self.plots[plt].setPen(plot_colours[cfg['indices'][plt]])
             if plt.startswith('L'):
                 self.side_layouts['left'].addWidget(self.plotwidgets[plt])
                 self.side_layouts['left'].addWidget(bar['hbox'])
@@ -111,7 +122,7 @@ class DisplayWindow(object):
             if np.amax(np.fromiter(self.data[plt], np.float, 64)) > threshold:
                 # self.detect_time[plt] = time.time() + 0.25
                 self.plotcontrols[plt]['detected'].setText('DETECT')
-                print np.amax(self.data[plt])
+                # print np.amax(self.data[plt])
             else:
                 self.plotcontrols[plt]['detected'].setText('none')
         self.mainwin.setWindowTitle(title_string)
@@ -120,6 +131,24 @@ class DisplayWindow(object):
     # def threshold_changed(self, chname):
     #     print chname
     #     self.thresholds[chname] = self.plotcontrols[chname]['tctlbox'].value()
+
+    def btn_streamctl_click(self):
+        if self.cfg['handler'].do_polling:
+            self.cfg['handler'].do_polling = False
+            self.maincontrolbar['streamctl'].setText('Start streaming')
+            self.clear_plots()
+        else:
+            self.cfg['handler'].do_polling = True
+            self.maincontrolbar['streamctl'].setText('Stop streaming')
+
+    def clear_plots(self):
+        for plt in self.plot_names:
+            q = self.data[plt]
+            flatline = q[0]
+            for _ in xrange(0, self.datalen):
+                q.appendleft(flatline)
+        return
+
 
 
 class Channel(object):
@@ -240,7 +269,7 @@ class Channel(object):
 class IO_handler(object):
     """Handler for I/O."""
 
-    def __init__(self, port, bauds, channels):
+    def __init__(self, port, bauds, channels, nowrite=False):
         try:
             ser = serial.Serial()
             ser.port = port
@@ -249,8 +278,10 @@ class IO_handler(object):
             print 'connect success!'
             self.ser = ser
             self.channels = channels
-            self.do_polling = True
+            self.do_polling = False
+            self.kill_thread = False
             self.dsp_threads = []
+            self.nowrite = nowrite
             for ch in channels:
                 dsp_thread = Thread(target=ch.read_in, args=())
                 self.dsp_threads.append(dsp_thread)
@@ -261,77 +292,91 @@ class IO_handler(object):
             print 'Error opening serial port: ' + port
             exit(2)
 
-    def poll_serial(self, nowrite=False):
-        DO_ONCE = True
-        if self.ser.is_open and self.do_polling:
-            if not nowrite:
-                filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
-                try:
-                    output = open(filename, 'w')
-                except (OSError, IOError):
-                    print 'Error opening file: {}'.format(filename)
-                    exit(2)
-                else:
-                    output.write("RAW DATA ONLY\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
-            samples = 0
-            h = 'cc'  # header value --- 0xFC
-            h1 = ''
-            h2 = ''
-            self.ser.reset_input_buffer()
-            while self.ser.is_open and self.do_polling:
-                if self.ser.in_waiting:
-                    h2 = self.ser.read().encode('hex')
-                    if (h2 == h) and (h1 == h):
-                        h1 = ''
-                        raw_data = self.ser.read(7)
-                        # parsed_data = [ord(raw_data[0]),
-                        #                ord(raw_data[1]),
-                        #                (ord(raw_data[2]) << 8) + ord(raw_data[3]),
-                        #                (ord(raw_data[4]) << 8) + ord(raw_data[5]),
-                        #                (ord(raw_data[6]) << 8) + ord(raw_data[7]),
-                        #                (ord(raw_data[8]) << 8) + ord(raw_data[9])]
-                        parsed_data = [ord(raw_data[0]),
-                                       ord(raw_data[1]),
-                                       ((ord(raw_data[6]) & 3) << 8) + ord(raw_data[2]),
-                                       ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
-                                       ((ord(raw_data[6]) & 48) << 4) + ord(raw_data[4]),
-                                       ((ord(raw_data[6]) & 192) << 2) + ord(raw_data[5])]
-                        if not nowrite:
-                            output_line = "{},{},{},{},{},{}\n".format(parsed_data[0],
-                                                                       parsed_data[1],
-                                                                       parsed_data[2],
-                                                                       parsed_data[3],
-                                                                       parsed_data[4],
-                                                                       parsed_data[5])
-                            output.write(output_line)
-                        samples += 1
-                        if DO_ONCE:
-                            prev_count = parsed_data[1] - 1
-                            DO_ONCE = False
-                        diff = (parsed_data[1] - prev_count + 256) % 256
-                        prev_count = parsed_data[1]
-                        diff = 1
-                        # threads = []
-                        for ch in self.channels:
-                            ch.read_data = parsed_data
-                            ch.read_diff = diff
-                            ch.read_trigger = True
-                            # dsp_thread = Thread(target=ch.read_in,
-                            #                     args=(parsed_data, diff))
-                            # threads.append(dsp_thread)
-                            # dsp_thread.start()
-                        # for t in threads:
-                        #     t.join()
+    def poll_serial(self):
+        while not self.kill_thread:
+            if self.ser.is_open and self.do_polling:
+                DO_ONCE = True
+                # self.init_chans()
+                if not self.nowrite:
+                    filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
+                    try:
+                        output = open(filename, 'w')
+                    except (OSError, IOError):
+                        print 'Error opening file: {}'.format(filename)
+                        exit(2)
                     else:
-                        h1 = h2
-            if not nowrite:
-                print "Recorded {} samples to {}".format(samples, filename)
-                if not output.closed:
-                    output.close()
-            if self.ser.is_open:
-                self.ser.close()
-            for ch in self.channels:
-                ch.terminated = True
-        else:
-            print 'error, couldn\'t begin polling.'
+                        output.write("RAW DATA ONLY\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+                samples = 0
+                h = 'cc'  # header value --- 0xFC
+                h1 = ''
+                h2 = ''
+                self.ser.reset_input_buffer()
+                while self.ser.is_open and self.do_polling:
+                    if self.ser.in_waiting:
+                        h2 = self.ser.read().encode('hex')
+                        if (h2 == h) and (h1 == h):
+                            h1 = ''
+                            raw_data = self.ser.read(7)
+                            # parsed_data = [ord(raw_data[0]),
+                            #                ord(raw_data[1]),
+                            #                (ord(raw_data[2]) << 8) + ord(raw_data[3]),
+                            #                (ord(raw_data[4]) << 8) + ord(raw_data[5]),
+                            #                (ord(raw_data[6]) << 8) + ord(raw_data[7]),
+                            #                (ord(raw_data[8]) << 8) + ord(raw_data[9])]
+                            parsed_data = [ord(raw_data[0]),
+                                           ord(raw_data[1]),
+                                           ((ord(raw_data[6]) & 3) << 8) + ord(raw_data[2]),
+                                           ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
+                                           ((ord(raw_data[6]) & 48) << 4) + ord(raw_data[4]),
+                                           ((ord(raw_data[6]) & 192) << 2) + ord(raw_data[5])]
+                            if not self.nowrite:
+                                output_line = "{},{},{},{},{},{}\n".format(parsed_data[0],
+                                                                           parsed_data[1],
+                                                                           parsed_data[2],
+                                                                           parsed_data[3],
+                                                                           parsed_data[4],
+                                                                           parsed_data[5])
+                                output.write(output_line)
+                            samples += 1
+                            if DO_ONCE:
+                                prev_count = parsed_data[1] - 1
+                                DO_ONCE = False
+                            diff = (parsed_data[1] - prev_count + 256) % 256
+                            prev_count = parsed_data[1]
+                            diff = 1
+                            # threads = []
+                            for ch in self.channels:
+                                ch.read_data = parsed_data
+                                ch.read_diff = diff
+                                ch.read_trigger = True
+                                # dsp_thread = Thread(target=ch.read_in,
+                                #                     args=(parsed_data, diff))
+                                # threads.append(dsp_thread)
+                                # dsp_thread.start()
+                            # for t in threads:
+                            #     t.join()
+                        else:
+                            h1 = h2
+                if not self.nowrite:
+                    print "Recorded {} samples to {}".format(samples, filename)
+                    if not output.closed:
+                        output.close()
+            else:
+                # pass
+                self.ser.reset_input_buffer()
+
+
+        if self.ser.is_open:
+            self.ser.close()
+        for ch in self.channels:
+            ch.terminated = True
         return
+
+    # def init_chans(self):
+    #     for ch in self.channels:
+    #         dsp_thread = Thread(target=ch.read_in, args=())
+    #         self.dsp_threads.append(dsp_thread)
+    #         ch.terminated = False
+    #         ch.read_trigger = False
+    #         dsp_thread.start()
+    #     return

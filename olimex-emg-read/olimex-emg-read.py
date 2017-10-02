@@ -69,14 +69,13 @@ def serial_ports():
     else:
         raise ImportError("Sorry: no implementation for your platform ('{}') available".format(os.name))
 
-
     result = []
     for (p, _, _) in sorted(comports()):
         result.append(p)
     return result
 
 
-def main():
+def _main():
     global config
     args = parser.parse_args()
     if args.port in serial_ports():
@@ -86,15 +85,20 @@ def main():
         config['win'] = c.DisplayWindow(config)
         for chname in config['plot_names']:
             channels.append(c.Channel(chname, config))
-        handler = c.IO_handler(args.port, args.baudrate, channels)
-        poller = Thread(target=handler.poll_serial, args=(args.nowrite, ))
-        poller.start()
+        config['handler'] = c.IO_handler(args.port, args.baudrate, channels, args.nowrite)
+        config['poller'] = Thread(target=config['handler'].poll_serial, args=())
+        config['poller'].start()
         QtGui.QApplication.instance().exec_()
 
-        handler.do_polling = False
-        while poller.isAlive():
+        config['handler'].do_polling = False
+        config['handler'].kill_thread = True
+        while config['poller'].isAlive():
             sleep(0.1)
+        for thread in config['handler'].dsp_threads:
+            while thread.isAlive():
+                sleep(0.1)
         print 'Done.'
 
+
 if __name__ == '__main__':
-    main()
+    _main()
