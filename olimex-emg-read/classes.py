@@ -317,7 +317,9 @@ class calDialog(QtGui.QDialog):
             time.sleep(self.on_time)
             print ' ...release! test {}/{}'.format(self.pattern_idx + 1,
                                                    len(self.patterns))
-            time.sleep(self.on_time)
+            time.sleep(self.off_time)
+            for key in self.tests:
+                self.tests[key] = 0
             print 'click ok to do next test'
             self.pattern_idx += 1
         else:
