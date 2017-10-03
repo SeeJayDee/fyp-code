@@ -9,6 +9,7 @@ import numpy as np
 from scipy import signal
 from collections import deque
 from threading import Thread
+import threading
 import serial
 import datetime
 import time
@@ -28,32 +29,50 @@ class DisplayWindow(object):
     def __init__(self, cfg):
         """Constructor."""
         self.cfg = cfg  # store config info
+
+        # state variables
+        self.docalibration = False
+
+        # window setup
         self.mainwin = QtGui.QMainWindow()
+        self.calibrator = calDialog(cfg, self.mainwin)
         self.mainwin.setWindowTitle(cfg['title'])
         self.mainwin.resize(cfg['width'], cfg['height'])
         self.central_widget = QtGui.QWidget()
         self.mainwin.setCentralWidget(self.central_widget)
-        self.maincontrolbar = {'layout': QtGui.QVBoxLayout()}
+        self.mainbar = QtGui.QVBoxLayout()
         self.top_layout = QtGui.QHBoxLayout()
         self.side_layouts = {'left': QtGui.QVBoxLayout(),
                              'right': QtGui.QVBoxLayout()}
         self.top_layout.addLayout(self.side_layouts['left'])
         self.top_layout.addLayout(self.side_layouts['right'])
-        self.top_layout.addLayout(self.maincontrolbar['layout'])
+        self.top_layout.addLayout(self.mainbar)
         self.central_widget.setLayout(self.top_layout)
 
-        # maincontrolbar setup
-        self.maincontrolbar['streamctl'] = QtGui.QPushButton('Start streaming')
-        self.maincontrolbar['streamctl'].clicked.connect(self.btn_streamctl_click)
-        self.maincontrolbar['layout'].addWidget(self.maincontrolbar['streamctl'])
-        self.maincontrolbar['layout'].addSpacing(1)
-        self.maincontrolbar['loadcfg'] = QtGui.QPushButton('Load config')
-        self.maincontrolbar['layout'].addWidget(self.maincontrolbar['loadcfg'])
-        self.maincontrolbar['cal'] = QtGui.QPushButton('Calibrate')
-        self.maincontrolbar['layout'].addWidget(self.maincontrolbar['cal'])
-        self.maincontrolbar['layout'].addStretch(1)
+        # mainbar widgets setup
+        self.mb_widgets = {}
+        self.mb_widgets['streamctl'] = QtGui.QPushButton('Start streaming')
+        self.mb_widgets['streamctl'].clicked.connect(self.btn_streamctl_click)
+
+        self.mb_widgets['dorecord'] = QtGui.QCheckBox('Record output')
+        self.mb_widgets['dorecord'].stateChanged.connect(self.chbox_dorecord_changed)
+
+        self.mb_widgets['loadcfg'] = QtGui.QPushButton('Load config')
+        self.mb_widgets['loadcfg'].clicked.connect(self.btn_loadcfg_click)
+
+        self.mb_widgets['cal'] = QtGui.QPushButton('Calibrate')
+        self.mb_widgets['cal'].clicked.connect(self.btn_cal_click)
 
 
+        # mainbar layout setup
+        self.mainbar.addWidget(self.mb_widgets['streamctl'])
+        self.mainbar.addWidget(self.mb_widgets['dorecord'])
+        self.mainbar.addSpacing(1)
+        self.mainbar.addWidget(self.mb_widgets['loadcfg'])
+        self.mainbar.addWidget(self.mb_widgets['cal'])
+        self.mainbar.addStretch(1)
+
+        # timers & data structures
         self.plot_timer = QtCore.QTimer()
         self.plot_timer.timeout.connect(self.update_plots)
         plot_names = cfg['plot_names']
@@ -69,6 +88,7 @@ class DisplayWindow(object):
         self.datalen = 4 * cfg['sampfreq']
         self.data = {}
         self.detect_time = {}
+        self.cal_thread = None
 
         for plt in plot_names:
             self.plotwidgets[plt] = pg.PlotWidget(name=plt)
@@ -128,19 +148,6 @@ class DisplayWindow(object):
         self.mainwin.setWindowTitle(title_string)
         app.processEvents()
 
-    # def threshold_changed(self, chname):
-    #     print chname
-    #     self.thresholds[chname] = self.plotcontrols[chname]['tctlbox'].value()
-
-    def btn_streamctl_click(self):
-        if self.cfg['handler'].do_polling:
-            self.cfg['handler'].do_polling = False
-            self.maincontrolbar['streamctl'].setText('Start streaming')
-            self.clear_plots()
-        else:
-            self.cfg['handler'].do_polling = True
-            self.maincontrolbar['streamctl'].setText('Stop streaming')
-
     def clear_plots(self):
         for plt in self.plot_names:
             q = self.data[plt]
@@ -149,7 +156,129 @@ class DisplayWindow(object):
                 q.appendleft(flatline)
         return
 
+    # def threshold_changed(self, chname):
+    #     print chname
+    #     self.thresholds[chname] = self.plotcontrols[chname]['tctlbox'].value()
 
+    def btn_streamctl_click(self):
+        caller = 'streamctl'
+        if self.cfg['handler'].do_polling:
+            self.cfg['handler'].do_polling = False
+            self.mb_widgets[caller].setText('Start streaming')
+            self.clear_plots()
+            self.enable_widgets(self.mb_widgets.values())
+        else:
+            self.cfg['handler'].do_polling = True
+            self.mb_widgets[caller].setText('Stop streaming')
+            disable_list = self.mb_widgets.values()
+            disable_list.remove(self.mb_widgets[caller])
+            self.disable_widgets(disable_list)
+
+    def chbox_dorecord_changed(self):
+        """Toggle recording to file."""
+        caller = 'dorecord'
+        self.cfg['handler'].nowrite = not self.mb_widgets[caller].isChecked
+
+    def btn_loadcfg_click(self):
+        """Load saved configuration parameters."""
+        # caller = 'loadcfg'
+        raise NotImplementedError('more work to do')
+
+    def btn_cal_click(self):
+        """Perform calibration."""
+        caller = 'cal'
+        if not self.docalibration:
+            self.docalibration = True
+            self.mb_widgets[caller].setText('click to cancel calibration')
+            disable_list = self.mb_widgets.values()
+            disable_list.remove(self.mb_widgets[caller])
+            self.disable_widgets(disable_list)
+            self.calibration_handler()
+        else:
+            self._btn_cal_reset()
+            self.calibration_handler()
+
+    def _btn_cal_reset(self):
+        caller = 'cal'
+        self.docalibration = False
+        self.mb_widgets[caller].setText('click to calibrate')
+        self.enable_widgets(self.mb_widgets.values())
+
+    def disable_widgets(self, widgets):
+        """Disable every widget in a list of widgets."""
+        for w in widgets:
+            # self.mb_widgets[w].setEnabled(False)
+            w.setEnabled(False)
+        app.processEvents()
+
+    def enable_widgets(self, widgets):
+        """Enable every widget in a list of widgets."""
+        for w in widgets:
+            # self.mb_widgets[w].setEnabled(True)
+            w.setEnabled(True)
+        app.processEvents()
+
+
+
+    def calibration_handler(self):
+        if self.docalibration:
+            print 'doing calibration'
+            self.cal_thread = threading.Timer(5.0, self._cal_timeout)
+            self.cal_thread.start()
+            self.calibrator.exec_()
+        else:
+            if self.cal_thread:
+                self.cal_thread.cancel()
+                print 'calibration cancelled'
+        return
+
+    def _cal_timeout(self):
+        print 'timeout!'
+        self._btn_cal_reset()
+        return
+
+
+class calDialog(QtGui.QDialog):
+    """A dialog window for instructing the user through calibration."""
+
+    def __init__(self, cfg, parent=None):
+        """Constructor.
+
+        Window to appear when calibration is activated.
+        cfg parameters:
+            'cal_patterns' - list of lists of channel names
+            'cal_repeats' - # of times to repeat each pattern
+            'cal_onofftime' - tuple or list e.g. [1., 2.] - number of seconds on and off
+
+            Labels:
+                One for overview + instructions
+                One large one for flashing 'tense/release'
+                One set for telling the user which channels to activate
+            Buttons:
+                Start/next/OK button
+                Cancel button
+
+            Internal things:
+                Have a thing which outputs to a calibration file OR memory
+                    ---NEEDS to hook into IO_handler functions
+                csv format: x[0], ch03dp, x[1], ch13dp, x[2], ch23dp, x[3], ch33dp,
+                    where x is an array of containing each channel's activation state
+        """
+        super(calDialog, self).__init__(parent)
+
+        self.buttonBox = QtGui.QDialogButtonBox(self)
+        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
+        self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
+
+        self.textBrowser = QtGui.QTextBrowser(self)
+        self.textBrowser.append("This is a QTextBrowser!")
+
+        self.verticalLayout = QtGui.QVBoxLayout(self)
+        self.verticalLayout.addWidget(self.textBrowser)
+        self.verticalLayout.addWidget(self.buttonBox)
+
+        self.cfg = cfg
+        # self.show()
 
 class Channel(object):
     """A class for DSP and plotting related functions."""
@@ -296,8 +425,9 @@ class IO_handler(object):
         while not self.kill_thread:
             if self.ser.is_open and self.do_polling:
                 DO_ONCE = True
+                nowrite = self.nowrite
                 # self.init_chans()
-                if not self.nowrite:
+                if not nowrite:
                     filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
                     try:
                         output = open(filename, 'w')
@@ -329,7 +459,7 @@ class IO_handler(object):
                                            ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
                                            ((ord(raw_data[6]) & 48) << 4) + ord(raw_data[4]),
                                            ((ord(raw_data[6]) & 192) << 2) + ord(raw_data[5])]
-                            if not self.nowrite:
+                            if not nowrite:
                                 output_line = "{},{},{},{},{},{}\n".format(parsed_data[0],
                                                                            parsed_data[1],
                                                                            parsed_data[2],
@@ -357,13 +487,14 @@ class IO_handler(object):
                             #     t.join()
                         else:
                             h1 = h2
-                if not self.nowrite:
+                if not nowrite:
                     print "Recorded {} samples to {}".format(samples, filename)
                     if not output.closed:
                         output.close()
             else:
                 # pass
                 self.ser.reset_input_buffer()
+                time.sleep(0.05)
 
 
         if self.ser.is_open:

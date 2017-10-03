@@ -98,6 +98,7 @@ def _main():
             while thread.isAlive():
                 sleep(0.1)
         print 'Done.'
+        # sys.exit(c.app.exec_())
 
 
 if __name__ == '__main__':
