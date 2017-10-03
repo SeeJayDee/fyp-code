@@ -52,6 +52,11 @@ config = {'sampfreq': 256,
           'plot_names': ['L_AS', 'L_AP', 'R_AS', 'R_AP'],
           'indices': {'L_AS': 2, 'L_AP': 4, 'R_AS': 3, 'R_AP': 5}}
 
+cal = {'patterns': [['L_AS'], ['L_AP'], ['R_AS'], ['R_AP']],
+       'repeats': 10,
+       'intervals': [1., 2.]}
+
+config['cal'] = cal
 
 def serial_ports():
     """ Lists serial port names.
@@ -85,6 +90,7 @@ def _main():
         config['win'] = c.DisplayWindow(config)
         for chname in config['plot_names']:
             channels.append(c.Channel(chname, config))
+        channels = sorted(channels, key=lambda ch: ch.idx)
         config['handler'] = c.IO_handler(args.port, args.baudrate, channels, args.nowrite)
         config['poller'] = Thread(target=config['handler'].poll_serial, args=())
         config['poller'].start()

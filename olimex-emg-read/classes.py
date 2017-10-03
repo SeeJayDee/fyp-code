@@ -35,7 +35,7 @@ class DisplayWindow(object):
 
         # window setup
         self.mainwin = QtGui.QMainWindow()
-        self.calibrator = calDialog(cfg, self.mainwin)
+        self.calibrator = calDialog(cfg, self)
         self.mainwin.setWindowTitle(cfg['title'])
         self.mainwin.resize(cfg['width'], cfg['height'])
         self.central_widget = QtGui.QWidget()
@@ -177,7 +177,10 @@ class DisplayWindow(object):
     def chbox_dorecord_changed(self):
         """Toggle recording to file."""
         caller = 'dorecord'
-        self.cfg['handler'].nowrite = not self.mb_widgets[caller].isChecked
+        self.cfg['handler'].nowrite = not self.mb_widgets[caller].isChecked()
+        # self.cfg['handler'].nowrite = True
+        # print self.cfg['handler'].nowrite
+        print self.mb_widgets[caller].isChecked()
 
     def btn_loadcfg_click(self):
         """Load saved configuration parameters."""
@@ -203,6 +206,8 @@ class DisplayWindow(object):
         self.docalibration = False
         self.mb_widgets[caller].setText('click to calibrate')
         self.enable_widgets(self.mb_widgets.values())
+        self.cfg['handler'].do_polling = False
+        self.cfg['handler'].nowrite = not self.mb_widgets[caller].isChecked()
 
     def disable_widgets(self, widgets):
         """Disable every widget in a list of widgets."""
@@ -218,18 +223,20 @@ class DisplayWindow(object):
             w.setEnabled(True)
         app.processEvents()
 
-
-
     def calibration_handler(self):
         if self.docalibration:
+            self.cfg['handler'].do_polling = True
+            self.cfg['handler'].nowrite = False
+
             print 'doing calibration'
-            self.cal_thread = threading.Timer(5.0, self._cal_timeout)
-            self.cal_thread.start()
+            # self.cal_thread = threading.Timer(5.0, self._cal_timeout)
+            # self.cal_thread.start()
             self.calibrator.exec_()
         else:
             if self.cal_thread:
                 self.cal_thread.cancel()
                 print 'calibration cancelled'
+                self._btn_cal_reset()
         return
 
     def _cal_timeout(self):
@@ -264,7 +271,13 @@ class calDialog(QtGui.QDialog):
                 csv format: x[0], ch03dp, x[1], ch13dp, x[2], ch23dp, x[3], ch33dp,
                     where x is an array of containing each channel's activation state
         """
-        super(calDialog, self).__init__(parent)
+        self.parent = parent
+        super(calDialog, self).__init__(parent.mainwin)
+        self.pattern_idx = 0
+        self.patterns = cfg['cal']['patterns']
+        self.repeats = cfg['cal']['repeats']
+        self.on_time = cfg['cal']['intervals'][0]
+        self.off_time = cfg['cal']['intervals'][1]
 
         self.buttonBox = QtGui.QDialogButtonBox(self)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
@@ -276,9 +289,40 @@ class calDialog(QtGui.QDialog):
         self.verticalLayout = QtGui.QVBoxLayout(self)
         self.verticalLayout.addWidget(self.textBrowser)
         self.verticalLayout.addWidget(self.buttonBox)
+        self.buttonBox.accepted.connect(self.btn_ok_click)
+        self.buttonBox.rejected.connect(self.btn_cancel_click)
 
         self.cfg = cfg
+        self.tests ={}
+        for ID in cfg['indices']:
+            self.tests[ID] = cfg['indices'][ID] % 2
         # self.show()
+
+    def btn_cancel_click(self):
+        self.parent.btn_cal_click()
+        self.reject()
+
+    def btn_ok_click(self):
+        print 'ok clicked'
+        if self.pattern_idx < len(self.patterns):
+            self.tests = {}
+            curr_pattern = self.patterns[self.pattern_idx]
+            print 'tense',
+            for ID in self.cfg['indices']:
+                if ID in curr_pattern:
+                    self.tests[ID] = 1
+                    print ' ' + ID,
+                else:
+                    self.tests[ID] = 0
+            time.sleep(self.on_time)
+            print ' ...release! test {}/{}'.format(self.pattern_idx + 1,
+                                                   len(self.patterns))
+            time.sleep(self.on_time)
+            print 'click ok to do next test'
+            self.pattern_idx += 1
+        else:
+            self.parent.btn_cal_click()
+            self.accept()
 
 class Channel(object):
     """A class for DSP and plotting related functions."""
@@ -426,16 +470,32 @@ class IO_handler(object):
             if self.ser.is_open and self.do_polling:
                 DO_ONCE = True
                 nowrite = self.nowrite
+                cfg = self.channels[0].cfg
+                docalibration = cfg['win'].docalibration
                 # self.init_chans()
                 if not nowrite:
                     filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
+                    if docalibration:
+                        filename = 'calibration_' + filename
                     try:
                         output = open(filename, 'w')
                     except (OSError, IOError):
                         print 'Error opening file: {}'.format(filename)
                         exit(2)
                     else:
-                        output.write("RAW DATA ONLY\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+                        if not docalibration:
+                            output.write("RAW DATA ONLY\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+                        else:
+                            # sorted(channels, key=lambda ch: ch.idx)
+                            # output.write("Columns\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+                            header_line = "Columns\n,,"
+                            line2 = '\nOCRval,count,'
+                            for ch in self.channels:
+                                header_line += 'Ch{} ({}),,,'.format(ch.idx-2, ch.ID)
+                                line2 += 'raw,filt,cal,'
+                            header_line += line2
+                            output.write(header_line)
+
                 samples = 0
                 h = 'cc'  # header value --- 0xFC
                 h1 = ''
@@ -459,7 +519,7 @@ class IO_handler(object):
                                            ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
                                            ((ord(raw_data[6]) & 48) << 4) + ord(raw_data[4]),
                                            ((ord(raw_data[6]) & 192) << 2) + ord(raw_data[5])]
-                            if not nowrite:
+                            if not nowrite and not docalibration:
                                 output_line = "{},{},{},{},{},{}\n".format(parsed_data[0],
                                                                            parsed_data[1],
                                                                            parsed_data[2],
@@ -467,6 +527,9 @@ class IO_handler(object):
                                                                            parsed_data[4],
                                                                            parsed_data[5])
                                 output.write(output_line)
+                            else:
+                                output_line = '{},{},'.format(parsed_data[0],
+                                                              parsed_data[1])
                             samples += 1
                             if DO_ONCE:
                                 prev_count = parsed_data[1] - 1
@@ -476,9 +539,18 @@ class IO_handler(object):
                             diff = 1
                             # threads = []
                             for ch in self.channels:
+                                if docalibration:
+                                    filt = cfg['win'].data[ch.ID][0]
+                                    cal = cfg['win'].calibrator.tests[ch.ID]
+                                    output_line += '{0:.0f},{1:.2f},{2},'.format(ch.raw_Q[0],
+                                                                                 filt,
+                                                                                 cal)
                                 ch.read_data = parsed_data
                                 ch.read_diff = diff
                                 ch.read_trigger = True
+                            if docalibration:
+                                output_line += '\n'
+                                output.write(output_line)
                                 # dsp_thread = Thread(target=ch.read_in,
                                 #                     args=(parsed_data, diff))
                                 # threads.append(dsp_thread)
@@ -494,7 +566,7 @@ class IO_handler(object):
             else:
                 # pass
                 self.ser.reset_input_buffer()
-                time.sleep(0.05)
+                time.sleep(0.5)
 
 
         if self.ser.is_open:
