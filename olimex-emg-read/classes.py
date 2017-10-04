@@ -229,8 +229,9 @@ class DisplayWindow(object):
             self.cfg['handler'].nowrite = False
 
             print 'doing calibration'
-            # self.cal_thread = threading.Timer(5.0, self._cal_timeout)
-            # self.cal_thread.start()
+            self.cal_thread = threading.Timer(float(self.datalen / self.cfg['sampfreq']),
+                                              self.calibrator.on_show)
+            self.cal_thread.start()
             self.calibrator.exec_()
         else:
             if self.cal_thread:
@@ -279,24 +280,64 @@ class calDialog(QtGui.QDialog):
         self.on_time = cfg['cal']['intervals'][0]
         self.off_time = cfg['cal']['intervals'][1]
 
+        self.instruction_strings = ['Press \'Ok\' to start calibrating pattern: ',
+                                    'Calibrating ',
+                                    'Done. Click \'Ok\' to exit.']
+        self.prompt_strings = ['Your instructions will appear here.',
+                               'TENSE ({} sec) '.format(self.on_time),
+                               'RELEASE ({} sec) '.format(self.off_time)]
+
+        title = QtGui.QLabel('EMG CALIBRATION')
+
+        self.textBox = QtGui.QTextEdit(self)
+        self.textBox.setReadOnly(True)
+        self.textBox.append("Patterns to calibrate:")
+        for pattern in self.patterns:
+            self.textBox.append(str(pattern))
+        self.textBox.append('End.')
+        self.textBox.moveCursor(QtGui.QTextCursor.Start,
+                                QtGui.QTextCursor.MoveAnchor)
+        self.textBox.moveCursor(QtGui.QTextCursor.EndOfLine,
+                                QtGui.QTextCursor.KeepAnchor)
+
+        self.instructions = QtGui.QLabel('purging queue')
+        self.prompt = QtGui.QLabel('Please wait...')
+
         self.buttonBox = QtGui.QDialogButtonBox(self)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
 
-        self.textBrowser = QtGui.QTextBrowser(self)
-        self.textBrowser.append("This is a QTextBrowser!")
-
         self.verticalLayout = QtGui.QVBoxLayout(self)
-        self.verticalLayout.addWidget(self.textBrowser)
+        self.verticalLayout.addWidget(title)
+        self.verticalLayout.addSpacing(1)
+        self.verticalLayout.addWidget(self.textBox)
+        self.verticalLayout.addSpacing(1)
+        self.verticalLayout.addWidget(self.instructions)
+        self.verticalLayout.addWidget(self.prompt)
+        self.verticalLayout.addSpacing(2)
         self.verticalLayout.addWidget(self.buttonBox)
         self.buttonBox.accepted.connect(self.btn_ok_click)
         self.buttonBox.rejected.connect(self.btn_cancel_click)
+        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
 
         self.cfg = cfg
         self.tests ={}
         for ID in cfg['indices']:
-            self.tests[ID] = cfg['indices'][ID] % 2
+            # self.tests[ID] = cfg['indices'][ID] % 2
+            self.tests[ID] = 0
         # self.show()
+
+    def on_show(self):
+        """Activate buttons and labels appropriately.
+
+        Should be called in a timer thread straight after QDialog exec.
+        Timeout should be long enough to flush entire queue.
+        = datalen / sampfreq"""
+        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(True)
+        self.instructions.setText(self.instruction_strings[0] + str(self.patterns[self.pattern_idx]))
+        self.prompt.setText(self.prompt_strings[0])
+        self.move_box_selection(self.textBox)
+        return
 
     def btn_cancel_click(self):
         self.parent.btn_cal_click()
@@ -305,26 +346,52 @@ class calDialog(QtGui.QDialog):
     def btn_ok_click(self):
         print 'ok clicked'
         if self.pattern_idx < len(self.patterns):
-            self.tests = {}
+            # self.tests = {}
+            repeat_count = 0
+            prompt_end = '/' + str(self.repeats)
             curr_pattern = self.patterns[self.pattern_idx]
-            print 'tense',
+            self.move_box_selection(self.textBox)
+            self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
+            self.instructions.setText(self.instruction_strings[1] + str(curr_pattern))
+            app.processEvents()
             for ID in self.cfg['indices']:
                 if ID in curr_pattern:
                     self.tests[ID] = 1
-                    print ' ' + ID,
+                    print 'cal ' + ID,
                 else:
                     self.tests[ID] = 0
-            time.sleep(self.on_time)
-            print ' ...release! test {}/{}'.format(self.pattern_idx + 1,
-                                                   len(self.patterns))
-            time.sleep(self.off_time)
+            # time.sleep(self.on_time)
+            # print ' ...release! test {}/{}'.format(self.pattern_idx + 1,
+            #                                        len(self.patterns))
+            # time.sleep(self.off_time)
+            while repeat_count < self.repeats:
+                repeat_count += 1
+                self.prompt.setText(self.prompt_strings[1] + str(repeat_count) + prompt_end)
+                app.processEvents()
+                time.sleep(self.on_time)
+                self.prompt.setText(self.prompt_strings[2] + str(repeat_count) + prompt_end)
+                app.processEvents()
+                time.sleep(self.off_time)
+
             for key in self.tests:
                 self.tests[key] = 0
             print 'click ok to do next test'
+            self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(True)
             self.pattern_idx += 1
+            if self.pattern_idx < len(self.patterns):
+                self.instructions.setText(self.instruction_strings[0] + str(self.patterns[self.pattern_idx]))
+                self.prompt.setText(self.prompt_strings[0])
+            else:
+                self.instructions.setText(self.instruction_strings[2])
+                self.prompt.setText('')
         else:
             self.parent.btn_cal_click()
             self.accept()
+
+    def move_box_selection(self, box):
+        box.moveCursor(QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.MoveAnchor)
+        box.moveCursor(QtGui.QTextCursor.Down, QtGui.QTextCursor.MoveAnchor)
+        box.moveCursor(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
 
 class Channel(object):
     """A class for DSP and plotting related functions."""
@@ -476,27 +543,7 @@ class IO_handler(object):
                 docalibration = cfg['win'].docalibration
                 # self.init_chans()
                 if not nowrite:
-                    filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
-                    if docalibration:
-                        filename = 'calibration_' + filename
-                    try:
-                        output = open(filename, 'w')
-                    except (OSError, IOError):
-                        print 'Error opening file: {}'.format(filename)
-                        exit(2)
-                    else:
-                        if not docalibration:
-                            output.write("RAW DATA ONLY\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
-                        else:
-                            # sorted(channels, key=lambda ch: ch.idx)
-                            # output.write("Columns\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
-                            header_line = "Columns\n,,"
-                            line2 = '\nOCRval,count,'
-                            for ch in self.channels:
-                                header_line += 'Ch{} ({}),,,'.format(ch.idx-2, ch.ID)
-                                line2 += 'raw,filt,cal,'
-                            header_line += line2
-                            output.write(header_line)
+                    output, filename = self._open_output_file(docalibration)
 
                 samples = 0
                 h = 'cc'  # header value --- 0xFC
@@ -507,39 +554,27 @@ class IO_handler(object):
                     if self.ser.in_waiting:
                         h2 = self.ser.read().encode('hex')
                         if (h2 == h) and (h1 == h):
+                            samples += 1
                             h1 = ''
                             raw_data = self.ser.read(7)
-                            # parsed_data = [ord(raw_data[0]),
-                            #                ord(raw_data[1]),
-                            #                (ord(raw_data[2]) << 8) + ord(raw_data[3]),
-                            #                (ord(raw_data[4]) << 8) + ord(raw_data[5]),
-                            #                (ord(raw_data[6]) << 8) + ord(raw_data[7]),
-                            #                (ord(raw_data[8]) << 8) + ord(raw_data[9])]
-                            parsed_data = [ord(raw_data[0]),
-                                           ord(raw_data[1]),
-                                           ((ord(raw_data[6]) & 3) << 8) + ord(raw_data[2]),
-                                           ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
-                                           ((ord(raw_data[6]) & 48) << 4) + ord(raw_data[4]),
-                                           ((ord(raw_data[6]) & 192) << 2) + ord(raw_data[5])]
+                            parsed_data = self._parse_raw(raw_data)
                             if not nowrite and not docalibration:
-                                output_line = "{},{},{},{},{},{}\n".format(parsed_data[0],
-                                                                           parsed_data[1],
-                                                                           parsed_data[2],
-                                                                           parsed_data[3],
-                                                                           parsed_data[4],
-                                                                           parsed_data[5])
+                                output_line = self._format_output(parsed_data)
                                 output.write(output_line)
                             else:
                                 output_line = '{},{},'.format(parsed_data[0],
                                                               parsed_data[1])
-                            samples += 1
+
+                            # on first sample, force diff to 1
                             if DO_ONCE:
                                 prev_count = parsed_data[1] - 1
+                                diff = 1
                                 DO_ONCE = False
-                            diff = (parsed_data[1] - prev_count + 256) % 256
-                            prev_count = parsed_data[1]
-                            diff = 1
-                            # threads = []
+                            else:
+                                diff = (parsed_data[1] - prev_count + 256) % 256
+                                prev_count = parsed_data[1]
+
+                            # iterate over channels, trigger read_in
                             for ch in self.channels:
                                 if docalibration:
                                     filt = cfg['win'].data[ch.ID][0]
@@ -550,33 +585,68 @@ class IO_handler(object):
                                 ch.read_data = parsed_data
                                 ch.read_diff = diff
                                 ch.read_trigger = True
-                            if docalibration:
+                                # end for
+
+                            if docalibration:  # add newline if calibrating
                                 output_line += '\n'
                                 output.write(output_line)
-                                # dsp_thread = Thread(target=ch.read_in,
-                                #                     args=(parsed_data, diff))
-                                # threads.append(dsp_thread)
-                                # dsp_thread.start()
-                            # for t in threads:
-                            #     t.join()
                         else:
                             h1 = h2
                 if not nowrite:
+                    # clean up (stream stop) - close output file
                     print "Recorded {} samples to {}".format(samples, filename)
                     if not output.closed:
                         output.close()
             else:
-                # pass
+                # flush serial buffer & sleep half a second
                 self.ser.reset_input_buffer()
                 time.sleep(0.5)
 
-
+        # clean up (exit) - stop DSP threads and close serial port
         if self.ser.is_open:
             self.ser.close()
         for ch in self.channels:
             ch.terminated = True
         return
 
+    def _parse_raw(self, raw_data):
+        return [ord(raw_data[0]), ord(raw_data[1]),
+                ((ord(raw_data[6]) & 3) << 8) + ord(raw_data[2]),
+                ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
+                ((ord(raw_data[6]) & 48) << 4) + ord(raw_data[4]),
+                ((ord(raw_data[6]) & 192) << 2) + ord(raw_data[5])]
+
+    def _format_output(self, parsed_data):
+        return "{},{},{},{},{},{}\n".format(parsed_data[0],
+                                            parsed_data[1],
+                                            parsed_data[2],
+                                            parsed_data[3],
+                                            parsed_data[4],
+                                            parsed_data[5])
+
+    def _open_output_file(self, docalibration):
+        filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
+        if docalibration:
+            filename = 'calibration_' + filename
+        try:
+            output = open(filename, 'w')
+        except (OSError, IOError):
+            print 'Error opening file: {}'.format(filename)
+            exit(2)
+        else:
+            if not docalibration:
+                output.write("RAW DATA ONLY\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+            else:
+                # sorted(channels, key=lambda ch: ch.idx)
+                # output.write("Columns\nOCRval,count,Ch0,Ch1,Ch2,Ch3\n")
+                header_line = "Columns\n,,"
+                line2 = '\nOCRval,count,'
+                for ch in self.channels:
+                    header_line += 'Ch{} ({}),,,'.format(ch.idx-2, ch.ID)
+                    line2 += 'raw,filt,cal,'
+                header_line += line2
+                output.write(header_line)
+        return output, filename
     # def init_chans(self):
     #     for ch in self.channels:
     #         dsp_thread = Thread(target=ch.read_in, args=())

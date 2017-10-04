@@ -53,7 +53,7 @@ config = {'sampfreq': 256,
           'indices': {'L_AS': 2, 'L_AP': 4, 'R_AS': 3, 'R_AP': 5}}
 
 cal = {'patterns': [['L_AS'], ['L_AP'], ['R_AS'], ['R_AP']],
-       'repeats': 10,
+       'repeats': 3,
        'intervals': [1., 2.]}
 
 config['cal'] = cal
