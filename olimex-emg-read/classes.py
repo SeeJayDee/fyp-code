@@ -20,6 +20,25 @@ app = QtGui.QApplication([])
 def runningMeanFast(x, N):
     return np.convolve(x, np.ones((N,))/N)[(N-1):]
 
+
+class cal_pattern(object):
+    """An object to contain parameters for each calibration pattern.
+
+    Contains lists in a dict, having keys:
+        'C': list of channels the user will be asked to activate on CUE
+        'S': list of channels the user will be asked to keep tensed STATIC
+    Other parameters are: number of repeats, on time, off time
+    """
+
+    def __init__(self, repeats, cue_chans, stat_chans, times):
+        "Constructor."
+        self.repeats = repeats
+        self.cued = cue_chans
+        self.static = stat_chans
+        self.t_on = times[0]
+        self.t_off = times[1]
+
+
 class DisplayWindow(object):
     """A generic wrapper for our QtGui window.
 
@@ -265,6 +284,7 @@ class calDialog(QtGui.QDialog):
             Buttons:
                 Start/next/OK button
                 Cancel button
+                ?? Reset button ?? - cancel & restart current pattern
 
             Internal things:
                 Have a thing which outputs to a calibration file OR memory
@@ -392,6 +412,7 @@ class calDialog(QtGui.QDialog):
         box.moveCursor(QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.MoveAnchor)
         box.moveCursor(QtGui.QTextCursor.Down, QtGui.QTextCursor.MoveAnchor)
         box.moveCursor(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
+
 
 class Channel(object):
     """A class for DSP and plotting related functions."""
