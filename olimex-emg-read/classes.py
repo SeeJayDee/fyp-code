@@ -132,14 +132,18 @@ class DisplayWindow(object):
             self.plotcontrols[plt] = bar
             self.plots[plt] = self.plotwidgets[plt].plot()
             self.plots[plt].setPen(plot_colours[cfg['indices'][plt]])
-            if plt.startswith('L'):
+            # if plt.startswith('L'):
+            if plt.startswith('th'):
                 self.side_layouts['left'].addWidget(self.plotwidgets[plt])
                 self.side_layouts['left'].addWidget(bar['hbox'])
-            elif plt.startswith('R'):
+            # elif plt.startswith('R'):
+            elif plt.startswith('fi'):
                 self.side_layouts['right'].addWidget(self.plotwidgets[plt])
                 self.side_layouts['right'].addWidget(bar['hbox'])
 
             self.data[plt] = deque([0.0]*self.datalen, self.datalen)
+
+            self.plotwidgets[plt].setRange(yRange=(0., 1024.))
 
         for i in xrange(0, self.datalen):
             for plt in plot_names:
@@ -295,10 +299,10 @@ class calDialog(QtGui.QDialog):
         self.parent = parent
         super(calDialog, self).__init__(parent.mainwin)
         self.pattern_idx = 0
-        self.patterns = cfg['cal']['patterns']
-        self.repeats = cfg['cal']['repeats']
-        self.on_time = cfg['cal']['intervals'][0]
-        self.off_time = cfg['cal']['intervals'][1]
+        self.patterns = cfg['cal']
+        self.repeats = cfg['calcfg']['repeats']
+        self.on_time = cfg['calcfg']['intervals'][0]
+        self.off_time = cfg['calcfg']['intervals'][1]
 
         self.instruction_strings = ['Press \'Ok\' to start calibrating pattern: ',
                                     'Calibrating ',
@@ -313,7 +317,12 @@ class calDialog(QtGui.QDialog):
         self.textBox.setReadOnly(True)
         self.textBox.append("Patterns to calibrate:")
         for pattern in self.patterns:
-            self.textBox.append(str(pattern))
+            box_str = 'Pulse: {}'.format(str(pattern.cued))
+            if pattern.static:
+                box_str += ', hold: '
+                for static in pattern.static:
+                    box_str += '{}, '.format(str(static))
+            self.textBox.append(box_str)
         self.textBox.append('End.')
         self.textBox.moveCursor(QtGui.QTextCursor.Start,
                                 QtGui.QTextCursor.MoveAnchor)
@@ -354,7 +363,7 @@ class calDialog(QtGui.QDialog):
         Timeout should be long enough to flush entire queue.
         = datalen / sampfreq"""
         self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(True)
-        self.instructions.setText(self.instruction_strings[0] + str(self.patterns[self.pattern_idx]))
+        self.instructions.setText(self.instruction_strings[0] + str(self.patterns[self.pattern_idx].cued))
         self.prompt.setText(self.prompt_strings[0])
         self.move_box_selection(self.textBox)
         return
@@ -372,10 +381,14 @@ class calDialog(QtGui.QDialog):
             curr_pattern = self.patterns[self.pattern_idx]
             self.move_box_selection(self.textBox)
             self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
-            self.instructions.setText(self.instruction_strings[1] + str(curr_pattern))
+            if curr_pattern.static:
+                instruct_text = self.instruction_strings[1] + str(curr_pattern.cued) + ', holding ' + str(curr_pattern.static)
+            else:
+                instruct_text = self.instruction_strings[1] + str(curr_pattern.cued)
+            self.instructions.setText(instruct_text)
             app.processEvents()
             for ID in self.cfg['indices']:
-                if ID in curr_pattern:
+                if (ID in curr_pattern.cued) or (ID in curr_pattern.static):
                     self.tests[ID] = 1
                     print 'cal ' + ID,
                 else:
@@ -399,7 +412,12 @@ class calDialog(QtGui.QDialog):
             self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(True)
             self.pattern_idx += 1
             if self.pattern_idx < len(self.patterns):
-                self.instructions.setText(self.instruction_strings[0] + str(self.patterns[self.pattern_idx]))
+                curr_pattern = self.patterns[self.pattern_idx]
+                if curr_pattern.static:
+                    instruct_text = self.instruction_strings[0] + str(curr_pattern.cued) + ', holding ' + str(curr_pattern.static)
+                else:
+                    instruct_text = self.instruction_strings[0] + str(curr_pattern.cued)
+                self.instructions.setText(instruct_text)
                 self.prompt.setText(self.prompt_strings[0])
             else:
                 self.instructions.setText(self.instruction_strings[2])
@@ -445,14 +463,21 @@ class Channel(object):
                                      stop/(self.sampfreq / 2.0),
                                      'bandstop')  # create the mains filter
 
-        stop = 2. * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
+        stop = 0.5 * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
         b_AC2, a_AC2 = signal.butter(cfg['filt_order'],
                                      stop/(self.sampfreq / 2.0),
-                                     'bandstop')  # create the 2*mains filter
+                                     'bandstop')  # create the mains/2 filter
+
+        # stop = 0.5 * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
+        # b_AC3, a_AC3 = signal.butter(cfg['filt_order'],
+        #                              stop/(self.sampfreq / 2.0),
+        #                              'bandstop')  # create the mains/2 filter
 
         # convolve all filter coefficients to yield combined filter
         self.a = np.convolve(a_AC2, a_AC1)
+        # self.a = np.convolve(np.convolve(a_AC2, a_AC1), a_AC3)
         self.b = np.convolve(b_AC2, b_AC1)
+        # self.b = np.convolve(np.convolve(b_AC2, b_AC1), b_AC3)
         self.filtlen = max(len(self.a), len(self.b))
 
     def read_in(self):
@@ -649,6 +674,7 @@ class IO_handler(object):
         filename = datetime.datetime.now().strftime("data_%Y-%m-%d_%H%M-%S") + ".csv"
         if docalibration:
             filename = 'calibration_' + filename
+        filename = './data/' + filename
         try:
             output = open(filename, 'w')
         except (OSError, IOError):
@@ -665,6 +691,7 @@ class IO_handler(object):
                 for ch in self.channels:
                     header_line += 'Ch{} ({}),,,'.format(ch.idx-2, ch.ID)
                     line2 += 'raw,filt,cal,'
+                line2 += '\n'
                 header_line += line2
                 output.write(header_line)
         return output, filename

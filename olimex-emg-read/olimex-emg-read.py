@@ -39,24 +39,66 @@ parser.add_argument("-b", "--baudrate",
 parser.add_argument("-N", "--nowrite", action="store_true")
 parser.add_argument("-R", "--raw_output", action="store_true")
 
-config = {'sampfreq': 256,
-          'datalen': 2048,
+# config = {'sampfreq': 256,
+#           'datalen': 2048,
+#           'mainsfreq': 50,
+#           'notch_width': 1.0,
+#           'filt_order': 3,
+#           'raw_output': False,
+#           'title': 'EMG Grapher',
+#           'width': 1280,
+#           'height': 800,
+#           'plot_timer_ms': 50,
+#           'plot_names': ['L_AS', 'L_AP', 'R_AS', 'R_AP'],
+#           'indices': {'L_AS': 2, 'L_AP': 4, 'R_AS': 3, 'R_AP': 5}}
+#
+# cal = {'patterns': [['L_AS'], ['L_AP'], ['R_AS'], ['R_AP']],
+#        'repeats': 3,
+#        'intervals': [1., 2.]}
+
+config = {'sampfreq': 512,
+          'datalen': 4096,
           'mainsfreq': 50,
-          'notch_width': 1.0,
+          'notch_width': 0.5,
           'filt_order': 3,
           'raw_output': False,
           'title': 'EMG Grapher',
           'width': 1280,
           'height': 800,
           'plot_timer_ms': 50,
-          'plot_names': ['L_AS', 'L_AP', 'R_AS', 'R_AP'],
-          'indices': {'L_AS': 2, 'L_AP': 4, 'R_AS': 3, 'R_AP': 5}}
+          'plot_names': ['th_add', 'th_abd', 'fi_flx', 'fi_ext'],
+          'indices': {'th_add': 2, 'th_abd': 4, 'fi_flx': 3, 'fi_ext': 5}}
 
-cal = {'patterns': [['L_AS'], ['L_AP'], ['R_AS'], ['R_AP']],
-       'repeats': 3,
+prefixes = ['th', 'fi']
+calcfg = {'repeats': 5,
+    #    'intervals': [.1, .2]}
        'intervals': [1., 2.]}
+config['calcfg'] = calcfg
 
-config['cal'] = cal
+
+def populate_patterns(prefix_list, cal_cfg):
+    cal_patterns = []
+    mgroups = sorted(config['plot_names'])
+    for m in mgroups:  # populate patterns for isolated channels FIRST
+        cal_patterns.append(c.cal_pattern(cal_cfg['repeats'],
+                                          [m],
+                                          [],
+                                          cal_cfg['intervals']))
+    for m in mgroups:  # populate combined patterns
+        grp = ''
+        for pre in prefix_list:  # note muscle group
+            if m.startswith(pre):
+                grp = pre
+                break
+        for o in mgroups:  # iterate over groups again
+            if o.startswith(grp):
+                continue
+            cal_patterns.append(c.cal_pattern(cal_cfg['repeats'],
+                                              [m],
+                                              [o],
+                                              cal_cfg['intervals']))
+    return cal_patterns
+
 
 def serial_ports():
     """ Lists serial port names.
@@ -87,6 +129,7 @@ def _main():
         if args.raw_output:
             config['raw_output'] = True
         channels = []
+        config['cal'] = populate_patterns(prefixes, calcfg)
         config['win'] = c.DisplayWindow(config)
         for chname in config['plot_names']:
             channels.append(c.Channel(chname, config))
