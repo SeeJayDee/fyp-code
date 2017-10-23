@@ -388,21 +388,30 @@ class calDialog(QtGui.QDialog):
             self.instructions.setText(instruct_text)
             app.processEvents()
             for ID in self.cfg['indices']:
-                if (ID in curr_pattern.cued) or (ID in curr_pattern.static):
+                if ID in curr_pattern.cued:
+                    print 'cueing' + ID + ', ',
+                if ID in curr_pattern.static:
                     self.tests[ID] = 1
-                    print 'cal ' + ID,
+                    print 'holding ' + ID + ', ',
                 else:
                     self.tests[ID] = 0
+            print ''
             # time.sleep(self.on_time)
             # print ' ...release! test {}/{}'.format(self.pattern_idx + 1,
             #                                        len(self.patterns))
             # time.sleep(self.off_time)
             while repeat_count < self.repeats:
                 repeat_count += 1
+                # tense target/s
                 self.prompt.setText(self.prompt_strings[1] + str(repeat_count) + prompt_end)
+                for ID in curr_pattern.cued:
+                    self.tests[ID] = 1
                 app.processEvents()
                 time.sleep(self.on_time)
+                # release target/s
                 self.prompt.setText(self.prompt_strings[2] + str(repeat_count) + prompt_end)
+                for ID in curr_pattern.cued:
+                    self.tests[ID] = 0
                 app.processEvents()
                 time.sleep(self.off_time)
 
