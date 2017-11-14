@@ -106,6 +106,9 @@ class DisplayWindow(object):
         self.plots = {}
         self.datalen = 4 * cfg['sampfreq']
         self.data = {}
+        self.ffts = {}
+        self.fftlen = cfg['sampfreq'] / 4
+        self.fftcount = self.fftlen / 8
         self.detect_time = {}
         self.cal_thread = None
 
@@ -142,6 +145,7 @@ class DisplayWindow(object):
                 self.side_layouts['right'].addWidget(bar['hbox'])
 
             self.data[plt] = deque([0.0]*self.datalen, self.datalen)
+            self.ffts[plt] = np.zeros(self.fftlen / 2)  # rfft output len is 1/2 fftlen
 
             self.plotwidgets[plt].setRange(yRange=(0., 1024.))
 
@@ -158,6 +162,7 @@ class DisplayWindow(object):
         title_string = self.cfg['title']
         for plt in self.plot_names:
             threshold = self.plotcontrols[plt]['tctlbox'].value()
+            # self.plots[plt].setData(self.ffts[plt])
             self.plots[plt].setData(self.data[plt])
             title_string += ' | {0} p-p : {1:.0f}'.format(plt,
                                                     np.amax(self.data[plt]) - np.amin(self.data[plt]))
@@ -466,13 +471,14 @@ class Channel(object):
         # Thread control
         self.read_trigger = False
         self.terminated = False
+        self.fftcounter = 0
         # DSP setup
         stop = cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
         b_AC1, a_AC1 = signal.butter(cfg['filt_order'],
                                      stop/(self.sampfreq / 2.0),
                                      'bandstop')  # create the mains filter
 
-        stop = 0.5 * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
+        stop = 2. * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
         b_AC2, a_AC2 = signal.butter(cfg['filt_order'],
                                      stop/(self.sampfreq / 2.0),
                                      'bandstop')  # create the mains/2 filter
@@ -557,10 +563,21 @@ class Channel(object):
         out = self.b.dot(filtX) - self.a.dot(filtY) / self.a[0]
         self.plotwin.data[self.ID].appendleft(out)  # append y[0] to the filtered data queue
 
+        if self.fftcounter >= self.plotwin.fftcount:
+            self.fftcounter = 0
+            self.plotwin.ffts[self.ID] = self.short_fft()
+        else:
+            self.fftcounter += 1
+
         # delete function variables... just in case
         del filtX
         del filtY
         return out
+
+    def short_fft(self):
+        # front = np.fromiter(self.plotwin.data[self.ID], np.float)[:self.plotwin.fftlen]
+        # return np.abs(np.fft.rfft(front))
+        return np.abs(np.fft.rfft(np.fromiter(self.plotwin.data[self.ID], np.float)[:self.plotwin.fftlen]))[1:]
 
 
 class IO_handler(object):

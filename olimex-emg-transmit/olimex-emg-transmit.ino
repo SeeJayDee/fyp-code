@@ -28,8 +28,8 @@
 
 // All definitions
 #define HEADER 0xcc
-#define SAMP_FREQ 512
-//#define SAMP_FREQ 256
+//#define SAMP_FREQ 512
+#define SAMP_FREQ 256
 #define LED_PIN  13
 #define CAL_SIG_PIN 9
 #define PACKET_SIZE 9

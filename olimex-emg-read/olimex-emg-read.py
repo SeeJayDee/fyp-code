@@ -56,7 +56,7 @@ parser.add_argument("-R", "--raw_output", action="store_true")
 #        'repeats': 3,
 #        'intervals': [1., 2.]}
 
-config = {'sampfreq': 512,
+config = {'sampfreq': 256,
           'datalen': 4096,
           'mainsfreq': 50,
           'notch_width': 0.5,
