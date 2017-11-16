@@ -28,7 +28,7 @@ import argparse
 from threading import Thread
 from time import sleep
 import classes as c
-import game-name as game 
+# import spaceinvaders as game
 
 
 # #### GLOBAL VARIABLES ####
@@ -136,8 +136,6 @@ def _main():
             channels.append(c.Channel(chname, config))
         channels = sorted(channels, key=lambda ch: ch.idx)
         config['handler'] = c.IO_handler(args.port, args.baudrate, channels, args.nowrite)
-config['gamethread'] = Thread(target=game.main, args=())
-config['gamethread'].start()
         config['poller'] = Thread(target=config['handler'].poll_serial, args=())
         config['poller'].start()
         QtGui.QApplication.instance().exec_()
