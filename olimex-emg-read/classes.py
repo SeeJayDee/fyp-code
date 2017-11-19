@@ -14,6 +14,7 @@ import serial
 import datetime
 import time
 import copy
+import keylib as kl
 from functools import partial
 
 app = QtGui.QApplication([])
@@ -54,9 +55,13 @@ class DisplayWindow(object):
         self.docalibration = False
         self.sendkeys = False
 
+        # keyboard event things
+        cfg['keys'] = kl.Base
+
         # window setup
         self.mainwin = QtGui.QMainWindow()
         self.calibrator = calDialog(cfg, self)
+        self.keyselect = keysDialog(cfg, self)
 
         self.mainwin.setWindowTitle(cfg['title'])
         self.mainwin.resize(cfg['width'], cfg['height'])
@@ -233,7 +238,8 @@ class DisplayWindow(object):
     def btn_keycfg_click(self):
         """Open key press config window/dialog."""
         # caller = 'loadcfg'
-        raise NotImplementedError('more work to do')
+        self.keyselect.exec_()
+        # raise NotImplementedError('more work to do')
 
     def btn_cal_click(self):
         """Perform calibration."""
@@ -486,7 +492,7 @@ class keysDialog(QtGui.QDialog):
 
         """
         self.parent = parent
-        super(calDialog, self).__init__(parent.mainwin)
+        super(keysDialog, self).__init__(parent.mainwin)
         title = QtGui.QLabel('Key Configuration')
 
         num_keys = 4
@@ -495,32 +501,51 @@ class keysDialog(QtGui.QDialog):
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
 
-        self.selectionGrid = QtGui.QGridLayout(self)
-        self.keySelectors = []
+        self.selectionBox = QtGui.QVBoxLayout(self)
+        self.selectionBox.addWidget(title)
+        self.selectionBox.addSpacing(1)
+
+        labels = QtGui.QHBoxLayout(self)
+        labels.addWidget(QtGui.QLabel('Key:'), 0, 68)
+        labels.addSpacing(1)
+        labels.addWidget(QtGui.QLabel('Action:'), 0, 130)
+        self.chan_sels = {}
+        for name in cfg['names']:
+            labels.addWidget(QtGui.QLabel(cfg['names'][name]))
+            self.chan_sels[name] = []
+        self.selectionBox.addLayout(labels, 0)
+
         sel = QtGui.QComboBox(self)
         sel.addItem('Select Key...', None)
-        # for keyname, keyval in cfg['keys']:
-        #    sel.addItem(keyname, keyval)
-        # OR
-        # sel.addItems(cfg['keys'])
+        for keyname in cfg['keys']:
+            sel.addItem(keyname, cfg['keys'][keyname])
+        self.keySelectors = []
         for i in range(num_keys):
-            self.keySelectors.append(copy.copy(sel))
-            # add keySelectors[i] to column 0 of selectionGrid
+            this_row = QtGui.QHBoxLayout(self)
+            this_key = copy.copy(sel)
+            self.keySelectors.append(this_key)
+            this_row.addWidget(this_key)
+            this_row.addSpacing(1)
+            for name in cfg['names']:
+                cb = QtGui.QCheckBox(self)
+                this_row.addWidget(cb)
+                self.chan_sels[name].append(cb)
+            self.selectionBox.addLayout(this_row)
         del sel
 
-        self.verticalLayout = QtGui.QVBoxLayout(self)
-        self.verticalLayout.addWidget(title)
-        self.verticalLayout.addSpacing(2)
-        self.verticalLayout.addWidget(self.buttonBox)
-        self.buttonBox.accepted.connect(self.btn_ok_click)
-        self.buttonBox.rejected.connect(self.btn_cancel_click)
-        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
+        self.selectionBox.addSpacing(2)
+        self.selectionBox.addWidget(self.buttonBox)
+
+        # self.buttonBox.accepted.connect(self.btn_ok_click)
+        # self.buttonBox.rejected.connect(self.btn_cancel_click)
+        # self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
 
         self.cfg = cfg
 
     def on_show(self):
         """Activate buttons and labels appropriately."""
-        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(True)
+        self.buttonBox.button(QtGui.QDialogButtonBox.Cancel).setEnabled(True)
+        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
         return
 
     def btn_cancel_click(self):

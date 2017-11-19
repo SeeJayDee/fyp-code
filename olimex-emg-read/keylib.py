@@ -1,8 +1,13 @@
+"""A library for the key-press related functions.
+
+Originally named 'keytest.py'.
+"""
+
 from win32api import keybd_event
 import time
 import threading
 
-loop = True;
+loop = False;
 
 Base = {
     '0': 48,
@@ -103,6 +108,7 @@ def loopKeys():
         time.sleep(1.5)
 
 if __name__ == '__main__':
+    loop = True
     loop_t = threading.Thread(target=loopKeys, args=())
     loop_t.start()
     raw_input("Press [RETURN] to exit")
