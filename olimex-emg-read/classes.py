@@ -61,6 +61,7 @@ class DisplayWindow(object):
         # keyboard event things
         cfg['keys'] = kl.Base
         self.combo_map = []
+        self.selected_keys = []
 
         # window setup
         self.mainwin = QtGui.QMainWindow()
@@ -197,6 +198,20 @@ class DisplayWindow(object):
                 self.chanstates[plt] = False
         self.mainwin.setWindowTitle(title_string)
         if self.sendkeys:
+            for i in range(0, len(self.selected_keys)):
+                Key = self.selected_keys[i]
+                if Key:
+                    press_cond = self.combo_map[i]
+                    do_press = True
+                    for name in self.cfg['names']:
+                        if press_cond[name] == QtCore.Qt.CheckState.Checked:
+                            do_press = do_press & self.chanstates[name]
+                        elif press_cond[name] == QtCore.Qt.CheckState.Unchecked:
+                            do_press = do_press & (not self.chanstates[name])
+                    if do_press:
+                        kl.KeyDown(Key)
+                    else:
+                        kl.KeyUp(Key)
             # check if key is not None
             #     if so check each channel state against entry in combo_map
             #         if good, call KeyDown
@@ -531,6 +546,7 @@ class keysDialog(QtGui.QDialog):
         self.keySelectors = []
         for i in range(num_keys):
             parent.combo_map.append({})
+            parent.selected_keys.append(None)
             this_key = QtGui.QComboBox(self)
             this_key.addItem('Select Key...', None)
             for keyname in cfg['keys']:
