@@ -54,9 +54,13 @@ class DisplayWindow(object):
         # state variables
         self.docalibration = False
         self.sendkeys = False
+        self.chanstates = {}
+        for name in cfg['names']:
+            self.chanstates[name] = False
 
         # keyboard event things
         cfg['keys'] = kl.Base
+        self.combo_map = []
 
         # window setup
         self.mainwin = QtGui.QMainWindow()
@@ -186,10 +190,17 @@ class DisplayWindow(object):
             if np.amax(np.fromiter(self.data[plt], np.float, 64)) > threshold:
                 # self.detect_time[plt] = time.time() + 0.25
                 self.plotcontrols[plt]['detected'].setText('DETECT')
+                self.chanstates[plt] = True
                 # print np.amax(self.data[plt])
             else:
                 self.plotcontrols[plt]['detected'].setText('none')
+                self.chanstates[plt] = False
         self.mainwin.setWindowTitle(title_string)
+        if self.sendkeys:
+            # check if key is not None
+            #     if so check each channel state against entry in combo_map
+            #         if good, call KeyDown
+            #         else call KeyUp
         app.processEvents()
 
     def clear_plots(self):
@@ -519,6 +530,7 @@ class keysDialog(QtGui.QDialog):
 
         self.keySelectors = []
         for i in range(num_keys):
+            parent.combo_map.append({})
             this_key = QtGui.QComboBox(self)
             this_key.addItem('Select Key...', None)
             for keyname in cfg['keys']:
@@ -527,8 +539,11 @@ class keysDialog(QtGui.QDialog):
             verticals['keys'].addWidget(this_key)
             for name in cfg['names']:
                 cb = QtGui.QCheckBox(self)
+                cb.setTristate(True)
+                cb.setCheckState(1)
                 verticals[name].addWidget(cb, 1, 4)
                 self.chanBoxes[name].append(cb)
+                parent.combo_map[i][name] = QtCore.Qt.CheckState.PartiallyChecked
 
         self.selectionGrid.addLayout(verticals['keys'], 4, 0, num_keys, 1)
         i = 2
@@ -542,9 +557,9 @@ class keysDialog(QtGui.QDialog):
         self.selectionGrid.setColumnMinimumWidth(1, 32)
         self.selectionGrid.setRowMinimumHeight(2, 48)
 
-        # self.buttonBox.accepted.connect(self.btn_ok_click)
-        # self.buttonBox.rejected.connect(self.btn_cancel_click)
-        # self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
+        self.buttonBox.accepted.connect(self.btn_ok_click)
+        self.buttonBox.rejected.connect(self.btn_cancel_click)
+        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
 
         self.cfg = cfg
 
@@ -555,9 +570,11 @@ class keysDialog(QtGui.QDialog):
         return
 
     def btn_cancel_click(self):
+        # discard changes
         self.reject()
 
     def btn_ok_click(self):
+        # save checkbox states in parent.combo_map
         self.accept()
 
 

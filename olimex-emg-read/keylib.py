@@ -8,6 +8,7 @@ import time
 import threading
 
 loop = False;
+pressed_keys = set()
 
 Base = {
     '0': 48,
@@ -85,11 +86,15 @@ Base = {
     'SCROLL': 145 }
 
 def KeyUp(Key):
-    keybd_event(Base[Key], 0, 2, 0)
+    if Key in pressed_keys:
+        pressed_keys.remove(Key)
+        keybd_event(Base[Key], 0, 2, 0)
 
 
 def KeyDown(Key):
-    keybd_event(Base[Key], 0, 1, 0)
+    if Key not in pressed_keys:
+        pressed_keys.add(Key)
+        keybd_event(Base[Key], 0, 1, 0)
 
 
 def loopKeys():
