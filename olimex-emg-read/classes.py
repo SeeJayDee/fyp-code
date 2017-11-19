@@ -13,6 +13,7 @@ import threading
 import serial
 import datetime
 import time
+import copy
 from functools import partial
 
 app = QtGui.QApplication([])
@@ -488,9 +489,24 @@ class keysDialog(QtGui.QDialog):
         super(calDialog, self).__init__(parent.mainwin)
         title = QtGui.QLabel('Key Configuration')
 
+        num_keys = 4
+
         self.buttonBox = QtGui.QDialogButtonBox(self)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
+
+        self.selectionGrid = QtGui.QGridLayout(self)
+        self.keySelectors = []
+        sel = QtGui.QComboBox(self)
+        sel.addItem('Select Key...', None)
+        # for keyname, keyval in cfg['keys']:
+        #    sel.addItem(keyname, keyval)
+        # OR
+        # sel.addItems(cfg['keys'])
+        for i in range(num_keys):
+            self.keySelectors.append(copy.copy(sel))
+            # add keySelectors[i] to column 0 of selectionGrid
+        del sel
 
         self.verticalLayout = QtGui.QVBoxLayout(self)
         self.verticalLayout.addWidget(title)

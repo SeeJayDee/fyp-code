@@ -68,7 +68,8 @@ config = {'sampfreq': 256,
           'height': 800,
           'plot_timer_ms': 50,
           'plot_names': ['th_add', 'th_abd', 'fi_flx', 'fi_ext'],
-          'indices': {'th_add': 2, 'th_abd': 4, 'fi_flx': 3, 'fi_ext': 5}}
+          'indices': {'th_add': 2, 'th_abd': 4, 'fi_flx': 3, 'fi_ext': 5},
+          'keys': None}
 
 prefixes = ['th', 'fi']
 calcfg = {'repeats': 5,
