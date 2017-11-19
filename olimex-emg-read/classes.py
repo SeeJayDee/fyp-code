@@ -51,10 +51,12 @@ class DisplayWindow(object):
 
         # state variables
         self.docalibration = False
+        self.sendkeys = False
 
         # window setup
         self.mainwin = QtGui.QMainWindow()
         self.calibrator = calDialog(cfg, self)
+
         self.mainwin.setWindowTitle(cfg['title'])
         self.mainwin.resize(cfg['width'], cfg['height'])
         self.central_widget = QtGui.QWidget()
@@ -82,6 +84,11 @@ class DisplayWindow(object):
         self.mb_widgets['cal'] = QtGui.QPushButton('Calibrate')
         self.mb_widgets['cal'].clicked.connect(self.btn_cal_click)
 
+        self.mb_widgets['sendkeys'] = QtGui.QCheckBox('Send keyboard events')
+        self.mb_widgets['sendkeys'].stateChanged.connect(self.chbox_sendkeys_changed)
+
+        self.mb_widgets['keycfg'] = QtGui.QPushButton('Configure keys')
+        self.mb_widgets['keycfg'].clicked.connect(self.btn_keycfg_click)
 
         # mainbar layout setup
         self.mainbar.addWidget(self.mb_widgets['streamctl'])
@@ -89,6 +96,9 @@ class DisplayWindow(object):
         self.mainbar.addSpacing(1)
         self.mainbar.addWidget(self.mb_widgets['loadcfg'])
         self.mainbar.addWidget(self.mb_widgets['cal'])
+        self.mainbar.addSpacing(1)
+        self.mainbar.addWidget(self.mb_widgets['keycfg'])
+        self.mainbar.addWidget(self.mb_widgets['sendkeys'])
         self.mainbar.addStretch(1)
 
         # timers & data structures
@@ -208,10 +218,19 @@ class DisplayWindow(object):
         self.cfg['handler'].nowrite = not self.mb_widgets[caller].isChecked()
         # self.cfg['handler'].nowrite = True
         # print self.cfg['handler'].nowrite
-        print self.mb_widgets[caller].isChecked()
+        print 'Recording: {}'.format(self.mb_widgets[caller].isChecked())
+
+    def chbox_sendkeys_changed(self):
+        """Toggle sending keyboard events"""
+        self.sendkeys = self.mb_widgets['sendkeys'].isChecked()
 
     def btn_loadcfg_click(self):
         """Load saved configuration parameters."""
+        # caller = 'loadcfg'
+        raise NotImplementedError('more work to do')
+
+    def btn_keycfg_click(self):
+        """Open key press config window/dialog."""
         # caller = 'loadcfg'
         raise NotImplementedError('more work to do')
 
@@ -444,6 +463,55 @@ class calDialog(QtGui.QDialog):
         box.moveCursor(QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.MoveAnchor)
         box.moveCursor(QtGui.QTextCursor.Down, QtGui.QTextCursor.MoveAnchor)
         box.moveCursor(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
+
+
+class keysDialog(QtGui.QDialog):
+    """A dialog window for allowing user to set EMG channel combos & keys."""
+
+    def __init__(self, cfg, parent=None):
+        """Constructor.
+
+        Window to appear when 'configure keys' is clicked.
+        cfg parameters:
+
+
+            Labels:
+                One for overview + instructions
+            Buttons:
+                OK button - commit new config
+                Cancel button - keep prev config
+
+            Internal things:
+
+        """
+        self.parent = parent
+        super(calDialog, self).__init__(parent.mainwin)
+        title = QtGui.QLabel('Key Configuration')
+
+        self.buttonBox = QtGui.QDialogButtonBox(self)
+        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
+        self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
+
+        self.verticalLayout = QtGui.QVBoxLayout(self)
+        self.verticalLayout.addWidget(title)
+        self.verticalLayout.addSpacing(2)
+        self.verticalLayout.addWidget(self.buttonBox)
+        self.buttonBox.accepted.connect(self.btn_ok_click)
+        self.buttonBox.rejected.connect(self.btn_cancel_click)
+        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
+
+        self.cfg = cfg
+
+    def on_show(self):
+        """Activate buttons and labels appropriately."""
+        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(True)
+        return
+
+    def btn_cancel_click(self):
+        self.reject()
+
+    def btn_ok_click(self):
+        self.accept()
 
 
 class Channel(object):
