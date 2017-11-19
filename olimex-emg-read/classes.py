@@ -501,40 +501,46 @@ class keysDialog(QtGui.QDialog):
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
 
-        self.selectionBox = QtGui.QVBoxLayout(self)
-        self.selectionBox.addWidget(title)
-        self.selectionBox.addSpacing(1)
+        self.selectionGrid = QtGui.QGridLayout(self)
+        self.selectionGrid.addWidget(title, 0, 0, 1, -1)
 
         labels = QtGui.QHBoxLayout(self)
         labels.addWidget(QtGui.QLabel('Key:'), 0, 68)
-        labels.addSpacing(1)
+        labels.addSpacing(2)
         labels.addWidget(QtGui.QLabel('Action:'), 0, 130)
-        self.chan_sels = {}
-        for name in cfg['names']:
-            labels.addWidget(QtGui.QLabel(cfg['names'][name]))
-            self.chan_sels[name] = []
-        self.selectionBox.addLayout(labels, 0)
+        self.selectionGrid.addLayout(labels, 1, 0, 1, 3)
 
-        sel = QtGui.QComboBox(self)
-        sel.addItem('Select Key...', None)
-        for keyname in cfg['keys']:
-            sel.addItem(keyname, cfg['keys'][keyname])
+        self.chanBoxes = {}
+        verticals = {'keys': QtGui.QVBoxLayout(self)}
+        for name in cfg['names']:
+            self.chanBoxes[name] = []
+            verticals[name] = QtGui.QVBoxLayout(self)
+            verticals[name].addWidget(QtGui.QLabel(cfg['names'][name]), 1, 4)
+
         self.keySelectors = []
         for i in range(num_keys):
-            this_row = QtGui.QHBoxLayout(self)
-            this_key = copy.copy(sel)
+            this_key = QtGui.QComboBox(self)
+            this_key.addItem('Select Key...', None)
+            for keyname in cfg['keys']:
+                this_key.addItem(keyname, cfg['keys'][keyname])
             self.keySelectors.append(this_key)
-            this_row.addWidget(this_key)
-            this_row.addSpacing(1)
+            verticals['keys'].addWidget(this_key)
             for name in cfg['names']:
                 cb = QtGui.QCheckBox(self)
-                this_row.addWidget(cb)
-                self.chan_sels[name].append(cb)
-            self.selectionBox.addLayout(this_row)
-        del sel
+                verticals[name].addWidget(cb, 1, 4)
+                self.chanBoxes[name].append(cb)
 
-        self.selectionBox.addSpacing(2)
-        self.selectionBox.addWidget(self.buttonBox)
+        self.selectionGrid.addLayout(verticals['keys'], 4, 0, num_keys, 1)
+        i = 2
+        for name in cfg['names']:
+            self.selectionGrid.addLayout(verticals[name], 2, i, (1 + num_keys), 1)
+            self.selectionGrid.setColumnMinimumWidth(i, 96)
+            self.selectionGrid.setColumnStretch(i, 1)
+            i += 1
+
+        self.selectionGrid.addWidget(self.buttonBox, 8, 0, 1, -1, 4)
+        self.selectionGrid.setColumnMinimumWidth(1, 32)
+        self.selectionGrid.setRowMinimumHeight(2, 48)
 
         # self.buttonBox.accepted.connect(self.btn_ok_click)
         # self.buttonBox.rejected.connect(self.btn_cancel_click)

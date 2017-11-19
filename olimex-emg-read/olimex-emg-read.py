@@ -30,7 +30,6 @@ from time import sleep
 import classes as c
 # import spaceinvaders as game
 
-
 # #### GLOBAL VARIABLES ####
 parser = argparse.ArgumentParser()
 parser.add_argument("port", help="the name of the serial port, ie \'COM3\' or \'/dev/ttyS0\'")
