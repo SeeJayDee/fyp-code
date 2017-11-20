@@ -39,6 +39,7 @@
 #define SLOW 1
 #endif
 
+#define DUMMY // if defined, will output dummy data
 
 // Gloval constants and variables
 unsigned int OCRval = 0;          // OCR value for sampling freq
@@ -48,10 +49,47 @@ volatile byte state = HIGH;
 volatile byte state2 = HIGH;
 volatile byte count = 3;
 
+#ifdef DUMMY
+volatile byte dummy_counter = 1;
+volatile byte dummy_index = 0;
+volatile int dummy_offset = 0;
+volatile bool send_dummy = false;
+volatile char dir = 1;
+#endif
+
 
 //~~~~~~~~~~
 // Functions
 //~~~~~~~~~~
+
+/****************************************************/
+/*  Function name: dummyRead                        */
+/*  Parameters                                      */
+/*    Input   :  byte i: ADC index value            */
+/*    Output  :  int: dummy ADC result              */
+/*    Action: Outputs a fake ADC reading simulating */
+/*            an EMG pulse every 4 sec.             */
+/****************************************************/
+#ifdef DUMMY
+int dummyRead(byte i){
+  int result = 512;
+  if (!dummy_counter) {
+    send_dummy = true;
+  }
+  if (send_dummy){
+    if (i == dummy_index) { result += dummy_offset; }
+    dummy_offset += dir;
+    if (dummy_offset == 255){
+      dir = -1;
+    } else if (dummy_offset == 0) {
+      dir = 1;
+      send_dummy = false;
+      dummy_index = (++dummy_index) % 4;
+    }
+  }
+  return result;
+}
+#endif
 
 /****************************************************/
 /*  Function name: setSampleFreq                    */
@@ -118,6 +156,9 @@ void togglePins(){
     count = 15;
     state = !state;
   }
+#ifdef DUMMY
+  if (!(count % 4)){ ++dummy_counter; }
+#endif
 //  digitalWrite(11, state2);
 //  state2 = !state2;
 }
@@ -172,20 +213,18 @@ ISR(TIMER2_COMPA_vect){
   byte i = 0;
   TXData[8] = 0;
   for(i=0;i<4;i++){
+#ifdef DUMMY
+    ADC_val = dummyRead(i);
+#else
     ADC_val = analogRead(i);
-//    ADC_val = 768;
-//    TXData[4 + 2*i] = (byte)(ADC_val >> 8);
-//    TXData[5 + 2*i] = (byte)ADC_val;
+#endif
     byte hiBits = (byte)(ADC_val >> 8);
     TXData[8] |= (hiBits << (2 * i));
     TXData[4 + i] = (byte)ADC_val;
     Serial.write(TXData[4 + i]);
   }
+  // send high bits
   Serial.write(TXData[8]);
-//  // transmit data
-//  for(i=0;i<PACKET_SIZE;i++){
-//    Serial.write(TXData[i]);
-//  }
   // increment packet counter
   TXData[3]++;
 

@@ -85,16 +85,20 @@ Base = {
     'NUMLOCK': 144,
     'SCROLL': 145 }
 
-def KeyUp(Key):
+def KeyUp(Key, raw=False):
+    if not raw:
+        Key = Base[Key]
     if Key in pressed_keys:
         pressed_keys.remove(Key)
-        keybd_event(Base[Key], 0, 2, 0)
+        keybd_event(Key, 0, 2, 0)
 
 
-def KeyDown(Key):
+def KeyDown(Key, raw=False):
+    if not raw:
+        Key = Base[Key]
     if Key not in pressed_keys:
         pressed_keys.add(Key)
-        keybd_event(Base[Key], 0, 1, 0)
+        keybd_event(Key, 0, 1, 0)
 
 
 def loopKeys():

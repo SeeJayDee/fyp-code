@@ -13,7 +13,6 @@ import threading
 import serial
 import datetime
 import time
-import copy
 import keylib as kl
 from functools import partial
 
@@ -90,10 +89,10 @@ class DisplayWindow(object):
         self.mb_widgets['dorecord'].stateChanged.connect(self.chbox_dorecord_changed)
 
         self.mb_widgets['loadcfg'] = QtGui.QPushButton('Load config')
-        self.mb_widgets['loadcfg'].clicked.connect(self.btn_loadcfg_click)
+        # self.mb_widgets['loadcfg'].clicked.connect(self.btn_loadcfg_click)
 
         self.mb_widgets['cal'] = QtGui.QPushButton('Calibrate')
-        self.mb_widgets['cal'].clicked.connect(self.btn_cal_click)
+        # self.mb_widgets['cal'].clicked.connect(self.btn_cal_click)
 
         self.mb_widgets['sendkeys'] = QtGui.QCheckBox('Send keyboard events')
         self.mb_widgets['sendkeys'].stateChanged.connect(self.chbox_sendkeys_changed)
@@ -177,6 +176,7 @@ class DisplayWindow(object):
                     self.plots[plt].setData(self.data[plt])
 
         self.plot_timer.start(cfg['plot_timer_ms'])
+        # deactivate calibration controls for nowrite
         self.mainwin.show()
 
     def update_plots(self):
@@ -209,9 +209,9 @@ class DisplayWindow(object):
                         elif press_cond[name] == QtCore.Qt.CheckState.Unchecked:
                             do_press = do_press & (not self.chanstates[name])
                     if do_press:
-                        kl.KeyDown(Key)
+                        kl.KeyDown(Key, True)
                     else:
-                        kl.KeyUp(Key)
+                        kl.KeyUp(Key, True)
             # check if key is not None
             #     if so check each channel state against entry in combo_map
             #         if good, call KeyDown
@@ -241,6 +241,7 @@ class DisplayWindow(object):
             self.cfg['handler'].do_polling = True
             self.mb_widgets[caller].setText('Stop streaming')
             disable_list = self.mb_widgets.values()
+            disable_list.remove(self.mb_widgets['sendkeys'])
             disable_list.remove(self.mb_widgets[caller])
             self.disable_widgets(disable_list)
 
@@ -519,7 +520,7 @@ class keysDialog(QtGui.QDialog):
         """
         self.parent = parent
         super(keysDialog, self).__init__(parent.mainwin)
-        title = QtGui.QLabel('Key Configuration')
+        title = QtGui.QLabel('Key Configuration:\n(checked=must be active, cleared=must be inactive, other=dontcare)')
 
         num_keys = 4
 
@@ -556,7 +557,7 @@ class keysDialog(QtGui.QDialog):
             for name in cfg['names']:
                 cb = QtGui.QCheckBox(self)
                 cb.setTristate(True)
-                cb.setCheckState(1)
+                cb.setCheckState(QtCore.Qt.CheckState.PartiallyChecked)
                 verticals[name].addWidget(cb, 1, 4)
                 self.chanBoxes[name].append(cb)
                 parent.combo_map[i][name] = QtCore.Qt.CheckState.PartiallyChecked
@@ -575,22 +576,28 @@ class keysDialog(QtGui.QDialog):
 
         self.buttonBox.accepted.connect(self.btn_ok_click)
         self.buttonBox.rejected.connect(self.btn_cancel_click)
-        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
 
         self.cfg = cfg
 
-    def on_show(self):
-        """Activate buttons and labels appropriately."""
-        self.buttonBox.button(QtGui.QDialogButtonBox.Cancel).setEnabled(True)
-        self.buttonBox.button(QtGui.QDialogButtonBox.Ok).setEnabled(False)
-        return
-
     def btn_cancel_click(self):
         # discard changes
+        p = self.parent
+        for i in range(0, len(p.combo_map)):
+            cBoxIndex = self.keySelectors[i].findData(p.selected_keys[i])
+            if cBoxIndex == -1:
+                cBoxIndex = 0
+            self.keySelectors[i].setCurrentIndex(cBoxIndex)
+            for name in p.cfg['names']:
+                self.chanBoxes[name][i].setCheckState(p.combo_map[i][name])
         self.reject()
 
     def btn_ok_click(self):
         # save checkbox states in parent.combo_map
+        p = self.parent
+        for i in range(0, len(p.combo_map)):
+            p.selected_keys[i] = self.keySelectors[i].itemData(self.keySelectors[i].currentIndex())
+            for name in p.cfg['names']:
+                p.combo_map[i][name] = self.chanBoxes[name][i].checkState()
         self.accept()
 
 
@@ -731,7 +738,7 @@ class Channel(object):
 class IO_handler(object):
     """Handler for I/O."""
 
-    def __init__(self, port, bauds, channels, nowrite=False):
+    def __init__(self, port, bauds, channels, nowrite=True):
         try:
             ser = serial.Serial()
             ser.port = port
