@@ -39,7 +39,7 @@
 #define SLOW 1
 #endif
 
-#define DUMMY // if defined, will output dummy data
+//#define DUMMY // if defined, will output dummy data
 
 // Gloval constants and variables
 unsigned int OCRval = 0;          // OCR value for sampling freq

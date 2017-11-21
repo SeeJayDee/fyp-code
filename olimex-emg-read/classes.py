@@ -135,12 +135,12 @@ class DisplayWindow(object):
         for plt in plot_names:
             self.plotwidgets[plt] = pg.PlotWidget(name=plt)
             bar = {}
-            bar['tlabel'] = QtGui.QLabel('Threshold: ')
+            bar['tlabel'] = QtGui.QLabel('Threshold (p-p): ')
             bar['tctlbox'] = QtGui.QSpinBox()
             bar['tctlbox'].setRange(0, 1023)
             bar['tctlbox'].setSingleStep(1)
             bar['tctlbox'].setSuffix(' counts')
-            bar['tctlbox'].setValue(512)
+            bar['tctlbox'].setValue(0)
             # bar['tctlbox'].valueChanged.connect(lambda: self.threshold_changed(plt))
             # bar['tctlbox'].valueChanged.connect(partial(self.threshold_changed, plt))
             # self.thresholds[plt] = 512
@@ -150,7 +150,7 @@ class DisplayWindow(object):
             bar['layout'].addWidget(bar['tctlbox'])
             bar['layout'].addWidget(bar['detected'])
             self.detect_time[plt] = 0.0
-            bar['hbox'] = QtGui.QGroupBox('Channel {} controls'.format(plt))
+            bar['hbox'] = QtGui.QGroupBox('Channel {} (\'{}\' on ADC{}) controls'.format(cfg['names'][plt], plt, (cfg['indices'][plt] - 2)))
             bar['hbox'].setLayout(bar['layout'])
             self.plotcontrols[plt] = bar
             self.plots[plt] = self.plotwidgets[plt].plot()
@@ -188,7 +188,8 @@ class DisplayWindow(object):
             title_string += ' | {0} p-p : {1:.0f}'.format(plt,
                                                     np.amax(self.data[plt]) - np.amin(self.data[plt]))
             # if  time.time() > self.detect_time[plt]:
-            if np.amax(np.fromiter(self.data[plt], np.float, 64)) > threshold:
+            fresh = np.fromiter(self.data[plt], np.float, 64)
+            if (np.amax(fresh) - np.amin(fresh)) > threshold:
                 # self.detect_time[plt] = time.time() + 0.25
                 self.plotcontrols[plt]['detected'].setText('DETECT')
                 self.chanstates[plt] = True
@@ -633,7 +634,7 @@ class Channel(object):
                                      stop/(self.sampfreq / 2.0),
                                      'bandstop')  # create the mains filter
 
-        stop = 2. * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
+        stop = .5 * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
         b_AC2, a_AC2 = signal.butter(cfg['filt_order'],
                                      stop/(self.sampfreq / 2.0),
                                      'bandstop')  # create the mains/2 filter
