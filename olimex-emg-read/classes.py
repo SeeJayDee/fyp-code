@@ -653,12 +653,10 @@ class Channel(object):
         self.b = np.convolve(b_AC2, b_AC1)
         # self.b = np.convolve(np.convolve(b_AC2, b_AC1), b_AC3)
         self.filtlen = max(len(self.a), len(self.b))
-        self.sync = None
 
     def read_in(self):
         """Checks for missed packets, then calls dsp() as required."""
         while not self.terminated:
-            self.sync.wait(0.5)
             if self.read_trigger:
                 self.read_trigger = False
                 data = self.read_data
@@ -757,11 +755,9 @@ class IO_handler(object):
             self.kill_thread = False
             self.dsp_threads = []
             self.nowrite = nowrite
-            self.sync = threading.Event()
             for ch in channels:
                 dsp_thread = Thread(target=ch.read_in, args=())
                 self.dsp_threads.append(dsp_thread)
-                ch.sync = self.sync
                 ch.terminated = False
                 ch.read_trigger = False
                 dsp_thread.start()
@@ -821,14 +817,12 @@ class IO_handler(object):
                                 ch.read_diff = diff
                                 ch.read_trigger = True
                                 # end for
-                            self.sync.set()
 
                             if docalibration:  # add newline if calibrating
                                 output_line += '\n'
                                 output.write(output_line)
                         else:
                             h1 = h2
-                    self.sync.clear()
                 if not nowrite:
                     # clean up (stream stop) - close output file
                     print "Recorded {} samples to {}".format(samples, filename)
