@@ -199,24 +199,7 @@ class DisplayWindow(object):
                 self.chanstates[plt] = False
         self.mainwin.setWindowTitle(title_string)
         if self.sendkeys:
-            for i in range(0, len(self.selected_keys)):
-                Key = self.selected_keys[i]
-                if Key:
-                    press_cond = self.combo_map[i]
-                    do_press = True
-                    for name in self.cfg['names']:
-                        if press_cond[name] == QtCore.Qt.CheckState.Checked:
-                            do_press = do_press & self.chanstates[name]
-                        elif press_cond[name] == QtCore.Qt.CheckState.Unchecked:
-                            do_press = do_press & (not self.chanstates[name])
-                    if do_press:
-                        kl.KeyDown(Key, True)
-                    else:
-                        kl.KeyUp(Key, True)
-            # check if key is not None
-            #     if so check each channel state against entry in combo_map
-            #         if good, call KeyDown
-            #         else call KeyUp
+            self.send_keys()
         app.processEvents()
 
     def clear_plots(self):
@@ -230,6 +213,26 @@ class DisplayWindow(object):
     # def threshold_changed(self, chname):
     #     print chname
     #     self.thresholds[chname] = self.plotcontrols[chname]['tctlbox'].value()
+
+    def send_keys(self):
+        for i in range(0, len(self.selected_keys)):
+            # iterate over the list of keys we're sending
+            Key = self.selected_keys[i]
+            if Key:  # check if key is not None
+                press_cond = self.combo_map[i]
+                do_press = True
+                for name in self.cfg['names']:
+                    # if so check each channel state against entry in combo_map
+                    # call keyDown if match, keyUp if no match
+                    if press_cond[name] == QtCore.Qt.CheckState.Checked:
+                        do_press = do_press & self.chanstates[name]
+                    elif press_cond[name] == QtCore.Qt.CheckState.Unchecked:
+                        do_press = do_press & (not self.chanstates[name])
+                if do_press:
+                    kl.KeyDown(Key, True)
+                else:
+                    kl.KeyUp(Key, True)
+        return
 
     def btn_streamctl_click(self):
         caller = 'streamctl'
@@ -650,10 +653,12 @@ class Channel(object):
         self.b = np.convolve(b_AC2, b_AC1)
         # self.b = np.convolve(np.convolve(b_AC2, b_AC1), b_AC3)
         self.filtlen = max(len(self.a), len(self.b))
+        self.sync = None
 
     def read_in(self):
         """Checks for missed packets, then calls dsp() as required."""
         while not self.terminated:
+            self.sync.wait(0.5)
             if self.read_trigger:
                 self.read_trigger = False
                 data = self.read_data
@@ -716,7 +721,7 @@ class Channel(object):
                                             np.float, self.filtlen - 1))
 
         # calculate y[0]
-        out = self.b.dot(filtX) - self.a.dot(filtY) / self.a[0]
+        out = (self.b.dot(filtX) - self.a.dot(filtY)) / self.a[0]
         self.plotwin.data[self.ID].appendleft(out)  # append y[0] to the filtered data queue
 
         if self.fftcounter >= self.plotwin.fftcount:
@@ -752,9 +757,11 @@ class IO_handler(object):
             self.kill_thread = False
             self.dsp_threads = []
             self.nowrite = nowrite
+            self.sync = threading.Event()
             for ch in channels:
                 dsp_thread = Thread(target=ch.read_in, args=())
                 self.dsp_threads.append(dsp_thread)
+                ch.sync = self.sync
                 ch.terminated = False
                 ch.read_trigger = False
                 dsp_thread.start()
@@ -814,12 +821,14 @@ class IO_handler(object):
                                 ch.read_diff = diff
                                 ch.read_trigger = True
                                 # end for
+                            self.sync.set()
 
                             if docalibration:  # add newline if calibrating
                                 output_line += '\n'
                                 output.write(output_line)
                         else:
                             h1 = h2
+                    self.sync.clear()
                 if not nowrite:
                     # clean up (stream stop) - close output file
                     print "Recorded {} samples to {}".format(samples, filename)

@@ -56,26 +56,27 @@ parser.add_argument("-R", "--raw_output", action="store_true")
 #        'repeats': 3,
 #        'intervals': [1., 2.]}
 
-config = {'sampfreq': 256,
-          'datalen': 4096,
-          'mainsfreq': 50,
-          'notch_width': 0.5,
-          'filt_order': 3,
+config = {'sampfreq': 256,  # sample freq, Hz
+          'datalen': 4096,  # data queue length
+          'mainsfreq': 50,  # local mains freq, Hz
+          'notch_width': 0.5,  # notch filter bandwidth, Hz
+          'filt_order': 3,  # notch filter order
           'raw_output': False,
-          'title': 'EMG Grapher',
-          'width': 1280,
-          'height': 800,
-          'plot_timer_ms': 50,
+          'title': 'EMG Grapher',  # window title
+          'width': 1280,  # window width
+          'height': 800,  # window height
+          'plot_timer_ms': 50,  # plot update interval, ms
           'plot_names': ['th_add', 'th_abd', 'fi_flx', 'fi_ext'],
-          'indices': {'th_add': 5,
+          'indices': {'th_add': 5,  # index of chan's data in packet
                       'th_abd': 4,
                       'fi_flx': 3,
                       'fi_ext': 2},
-          'names': {'th_add': 'ADduct Thumb',
+          'names': {'th_add': 'ADduct Thumb',  # description of channel
                     'th_abd': 'ABduct Thumb',
                     'fi_flx': 'Flex Fingers',
                     'fi_ext': 'Extend Fingers'},
           'keys': None}
+
 
 prefixes = ['th', 'fi']
 calcfg = {'repeats': 5,
@@ -145,11 +146,18 @@ def _main():
         config['handler'] = c.IO_handler(args.port, args.baudrate, channels)
         config['poller'] = Thread(target=config['handler'].poll_serial, args=())
         config['poller'].start()
+        # import objgraph
+        # objgraph.show_refs([config['win']], filename='win_refs.png')
+        # objgraph.show_refs([config['handler']], filename='io_refs.png')
+        # objgraph.show_refs([channels[0]], filename='chan_refs.png')
+        # objgraph.show_backrefs([config['win']], filename='win_Brefs.png')
+        # objgraph.show_backrefs([config['handler']], filename='io_Brefs.png')
+        # objgraph.show_backrefs([channels[0]], filename='chan_Brefs.png')
         QtGui.QApplication.instance().exec_()
 
         config['handler'].do_polling = False
         config['handler'].kill_thread = True
-        while config['poller'].isAlive():
+        while config['poller'].isAlive() or config['handler'].ser.is_open:
             sleep(0.1)
         for thread in config['handler'].dsp_threads:
             while thread.isAlive():
