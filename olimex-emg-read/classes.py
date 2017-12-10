@@ -1,6 +1,17 @@
+# === classes.py ===
+# * Function: a container for custom classes pertaining to olimex-emg-read.
+# *
+# * This is part of Christian D'Abrera's engineering final
+# * year project titled "EMG Bio-feedback for rehabilitation".
+# *
+# * Christian D'Abrera
+# * Curtin University 2017
+# * christian.dabrera@student.curtin.edu.au
+# * chrisdabrera@gmail.com
+
 """A library for the various object classes used in olimex-emg-read.py.
 
-blah.
+Yep.
 """
 
 from pyqtgraph.Qt import QtGui, QtCore
@@ -14,25 +25,27 @@ import serial
 import datetime
 import time
 import keylib as kl
-from functools import partial
+# from functools import partial
 
-app = QtGui.QApplication([])
+app = QtGui.QApplication([])  # apparently this is necessary
 
-def runningMeanFast(x, N):
-    return np.convolve(x, np.ones((N,))/N)[(N-1):]
+# borrowed from HUMM Tech; never used
+# def runningMeanFast(x, N):
+#     return np.convolve(x, np.ones((N,))/N)[(N-1):]
 
 
+# unimplemented calibration feature
 class cal_pattern(object):
     """An object to contain parameters for each calibration pattern.
 
     Contains lists in a dict, having keys:
         'C': list of channels the user will be asked to activate on CUE
         'S': list of channels the user will be asked to keep tensed STATIC
-    Other parameters are: number of repeats, on time, off time
+    Other parameters are: number of repeats, on time, off time.
     """
 
     def __init__(self, repeats, cue_chans, stat_chans, times):
-        "Constructor."
+        """Constructor."""
         self.repeats = repeats
         self.cued = cue_chans
         self.static = stat_chans
@@ -48,7 +61,7 @@ class DisplayWindow(object):
 
     def __init__(self, cfg):
         """Constructor."""
-        self.cfg = cfg  # store config info
+        self.cfg = cfg  # store config info internally
 
         # state variables
         self.docalibration = False
@@ -62,11 +75,12 @@ class DisplayWindow(object):
         self.combo_map = []
         self.selected_keys = []
 
-        # window setup
+        # window & dialog setup
         self.mainwin = QtGui.QMainWindow()
-        self.calibrator = calDialog(cfg, self)
+        self.calibrator = calDialog(cfg, self)  # unimplemented
         self.keyselect = keysDialog(cfg, self)
 
+        # set window properties, central widget, layouts, control bar
         self.mainwin.setWindowTitle(cfg['title'])
         self.mainwin.resize(cfg['width'], cfg['height'])
         self.central_widget = QtGui.QWidget()
@@ -120,7 +134,7 @@ class DisplayWindow(object):
                         3: (055, 111, 255),
                         4: (255, 99, 111),
                         5: (111, 99, 255)}
-
+        # pre-initializing lots of dicts
         self.plotwidgets = {}
         self.plotcontrols = {}
         self.plots = {}
@@ -130,9 +144,10 @@ class DisplayWindow(object):
         self.fftlen = cfg['sampfreq'] / 4
         self.fftcount = self.fftlen / 8
         self.detect_time = {}
-        self.cal_thread = None
+        self.cal_thread = None  # unimplemented
 
         for plt in plot_names:
+            # set up the plot area & plot controls & threshold controls
             self.plotwidgets[plt] = pg.PlotWidget(name=plt)
             bar = {}
             bar['tlabel'] = QtGui.QLabel('Threshold (p-p): ')
@@ -141,9 +156,6 @@ class DisplayWindow(object):
             bar['tctlbox'].setSingleStep(1)
             bar['tctlbox'].setSuffix(' counts')
             bar['tctlbox'].setValue(0)
-            # bar['tctlbox'].valueChanged.connect(lambda: self.threshold_changed(plt))
-            # bar['tctlbox'].valueChanged.connect(partial(self.threshold_changed, plt))
-            # self.thresholds[plt] = 512
             bar['detected'] = QtGui.QLabel('DETECT', )
             bar['layout'] = QtGui.QHBoxLayout()
             bar['layout'].addWidget(bar['tlabel'])
@@ -165,10 +177,11 @@ class DisplayWindow(object):
                 self.side_layouts['right'].addWidget(bar['hbox'])
 
             self.data[plt] = deque([0.0]*self.datalen, self.datalen)
-            self.ffts[plt] = np.zeros(self.fftlen / 2)  # rfft output len is 1/2 fftlen
+            self.ffts[plt] = np.zeros(self.fftlen / 2)  # len(rfft) = fftlen/2
 
             self.plotwidgets[plt].setRange(yRange=(0., 1024.))
 
+        # testing plots by adding sine wave data (?)
         for i in xrange(0, self.datalen):
             for plt in plot_names:
                 self.data[plt].appendleft(np.sin(i/10.))
@@ -176,17 +189,21 @@ class DisplayWindow(object):
                     self.plots[plt].setData(self.data[plt])
 
         self.plot_timer.start(cfg['plot_timer_ms'])
-        # deactivate calibration controls for nowrite
         self.mainwin.show()
 
     def update_plots(self):
+        """Update all plots and perform threshold detection.
+
+        Call sendkeys if necesssary.
+        """
         title_string = self.cfg['title']
         for plt in self.plot_names:
             threshold = self.plotcontrols[plt]['tctlbox'].value()
             # self.plots[plt].setData(self.ffts[plt])
             self.plots[plt].setData(self.data[plt])
-            title_string += ' | {0} p-p : {1:.0f}'.format(plt,
-                                                    np.amax(self.data[plt]) - np.amin(self.data[plt]))
+            title_string += '\
+                | {0} p-p : {1:.0f}\
+                '.format(plt, np.amax(self.data[plt]) - np.amin(self.data[plt]))
             # if  time.time() > self.detect_time[plt]:
             fresh = np.fromiter(self.data[plt], np.float, 64)
             if (np.amax(fresh) - np.amin(fresh)) > threshold:
@@ -200,9 +217,13 @@ class DisplayWindow(object):
         self.mainwin.setWindowTitle(title_string)
         if self.sendkeys:
             self.send_keys()
-        app.processEvents()
+        app.processEvents()  # trigger graphics update
 
     def clear_plots(self):
+        """Convert all plots to flatline.
+
+        There is probably a better way to do this.
+        """
         for plt in self.plot_names:
             q = self.data[plt]
             flatline = q[0]
@@ -215,6 +236,7 @@ class DisplayWindow(object):
     #     self.thresholds[chname] = self.plotcontrols[chname]['tctlbox'].value()
 
     def send_keys(self):
+        """Check channel states and send keyboard events."""
         for i in range(0, len(self.selected_keys)):
             # iterate over the list of keys we're sending
             Key = self.selected_keys[i]
@@ -235,7 +257,8 @@ class DisplayWindow(object):
         return
 
     def btn_streamctl_click(self):
-        caller = 'streamctl'
+        """Start or stop parsing serial data."""
+        caller = 'streamctl'  # tried, but can't pass args to Qt event funcs
         if self.cfg['handler'].do_polling:
             self.cfg['handler'].do_polling = False
             self.mb_widgets[caller].setText('Start streaming')
@@ -273,7 +296,10 @@ class DisplayWindow(object):
         # raise NotImplementedError('more work to do')
 
     def btn_cal_click(self):
-        """Perform calibration."""
+        """Perform calibration.
+
+        Feature unfinished.
+        """
         caller = 'cal'
         if not self.docalibration:
             self.docalibration = True
@@ -287,6 +313,7 @@ class DisplayWindow(object):
             self.calibration_handler()
 
     def _btn_cal_reset(self):
+        """Reset calibration dialog."""
         caller = 'cal'
         self.docalibration = False
         self.mb_widgets[caller].setText('click to calibrate')
@@ -309,6 +336,7 @@ class DisplayWindow(object):
         app.processEvents()
 
     def calibration_handler(self):
+        """Calibration handler."""
         if self.docalibration:
             self.cfg['handler'].do_polling = True
             self.cfg['handler'].nowrite = False
@@ -331,8 +359,12 @@ class DisplayWindow(object):
         return
 
 
+# unimplemented
 class calDialog(QtGui.QDialog):
-    """A dialog window for instructing the user through calibration."""
+    """A dialog window for instructing the user through calibration.
+
+    Not yet implemented properly. Unfinished.
+    """
 
     def __init__(self, cfg, parent=None):
         """Constructor.
@@ -526,8 +558,10 @@ class keysDialog(QtGui.QDialog):
         super(keysDialog, self).__init__(parent.mainwin)
         title = QtGui.QLabel('Key Configuration:\n(checked=must be active, cleared=must be inactive, other=dontcare)')
 
-        num_keys = 4
+        # num_keys controls the number of key selectors
+        num_keys = 4  # needs to be stored and loaded from cfg
 
+        # add button controls and descriptive labels
         self.buttonBox = QtGui.QDialogButtonBox(self)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
@@ -541,13 +575,15 @@ class keysDialog(QtGui.QDialog):
         labels.addWidget(QtGui.QLabel('Action:'), 0, 130)
         self.selectionGrid.addLayout(labels, 1, 0, 1, 3)
 
+        # for each channel, create an empty list for checkboxes and store in a dict
         self.chanBoxes = {}
-        verticals = {'keys': QtGui.QVBoxLayout(self)}
+        verticals = {'keys': QtGui.QVBoxLayout(self)}  # also create a dict for all the columns
         for name in cfg['names']:
             self.chanBoxes[name] = []
-            verticals[name] = QtGui.QVBoxLayout(self)
+            verticals[name] = QtGui.QVBoxLayout(self)  # add a column for the channel
             verticals[name].addWidget(QtGui.QLabel(cfg['names'][name]), 1, 4)
 
+        # populate a list with comboboxes
         self.keySelectors = []
         for i in range(num_keys):
             parent.combo_map.append({})
@@ -558,12 +594,14 @@ class keysDialog(QtGui.QDialog):
                 this_key.addItem(keyname, cfg['keys'][keyname])
             self.keySelectors.append(this_key)
             verticals['keys'].addWidget(this_key)
+            # also for every combobox add a checkbox to each channel's checkboxlist
             for name in cfg['names']:
                 cb = QtGui.QCheckBox(self)
-                cb.setTristate(True)
+                cb.setTristate(True)  # make it a three-way
                 cb.setCheckState(QtCore.Qt.CheckState.PartiallyChecked)
-                verticals[name].addWidget(cb, 1, 4)
-                self.chanBoxes[name].append(cb)
+                verticals[name].addWidget(cb, 1, 4) # add it to the column
+                self.chanBoxes[name].append(cb)  # add it the the checkboxlist
+                # set the default combo_map value
                 parent.combo_map[i][name] = QtCore.Qt.CheckState.PartiallyChecked
 
         self.selectionGrid.addLayout(verticals['keys'], 4, 0, num_keys, 1)
@@ -584,7 +622,7 @@ class keysDialog(QtGui.QDialog):
         self.cfg = cfg
 
     def btn_cancel_click(self):
-        # discard changes
+        # discard changes, revert checkboxes and key selectors to stored state
         p = self.parent
         for i in range(0, len(p.combo_map)):
             cBoxIndex = self.keySelectors[i].findData(p.selected_keys[i])
@@ -642,10 +680,10 @@ class Channel(object):
                                      stop/(self.sampfreq / 2.0),
                                      'bandstop')  # create the mains/2 filter
 
-        # stop = 0.5 * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
+        # stop = 2. * cfg['mainsfreq'] + cfg['notch_width'] * np.array([-1., 1.])
         # b_AC3, a_AC3 = signal.butter(cfg['filt_order'],
         #                              stop/(self.sampfreq / 2.0),
-        #                              'bandstop')  # create the mains/2 filter
+        #                              'bandstop')  # create the 2*mains filter
 
         # convolve all filter coefficients to yield combined filter
         self.a = np.convolve(a_AC2, a_AC1)
@@ -656,8 +694,8 @@ class Channel(object):
 
     def read_in(self):
         """Checks for missed packets, then calls dsp() as required."""
-        while not self.terminated:
-            if self.read_trigger:
+        while not self.terminated:  # run forever!
+            if self.read_trigger:  # check for trigger
                 self.read_trigger = False
                 data = self.read_data
                 diff = self.read_diff
@@ -679,7 +717,7 @@ class Channel(object):
         """Performs the actual signal processing.
 
         50Hz  notch filter (Butterworth).
-        100Hz notch filter (Butterworth).
+        100Hz notch filter (Butterworth). <-- actually 25 Hz
         """
         self.raw_Q.appendleft(newVal)
 
@@ -734,9 +772,11 @@ class Channel(object):
         return out
 
     def short_fft(self):
+        """Return the real-fft value of this channel's data queue."""
         # front = np.fromiter(self.plotwin.data[self.ID], np.float)[:self.plotwin.fftlen]
         # return np.abs(np.fft.rfft(front))
-        return np.abs(np.fft.rfft(np.fromiter(self.plotwin.data[self.ID], np.float)[:self.plotwin.fftlen]))[1:]
+        iter_tmp = np.fromiter(self.plotwin.data[self.ID], np.float)
+        return np.abs(np.fft.rfft(iter_tmp[:self.plotwin.fftlen]))[1:]
 
 
 class IO_handler(object):
@@ -766,8 +806,10 @@ class IO_handler(object):
             exit(2)
 
     def poll_serial(self):
-        while not self.kill_thread:
+        """Monstrous function to handle serial comms and data output."""
+        while not self.kill_thread:  # superloop
             if self.ser.is_open and self.do_polling:
+                # this only runs once when do_polling becomes true
                 DO_ONCE = True
                 nowrite = self.nowrite
                 cfg = self.channels[0].cfg
@@ -775,24 +817,24 @@ class IO_handler(object):
                 # self.init_chans()
                 if not nowrite:
                     output, filename = self._open_output_file(docalibration)
-
+                # initialize counter and header check bytes
                 samples = 0
                 h = 'cc'  # header value --- 0xFC
                 h1 = ''
                 h2 = ''
-                self.ser.reset_input_buffer()
-                while self.ser.is_open and self.do_polling:
-                    if self.ser.in_waiting:
-                        h2 = self.ser.read().encode('hex')
-                        if (h2 == h) and (h1 == h):
+                self.ser.reset_input_buffer()  # purge buffer
+                while self.ser.is_open and self.do_polling:  # superloop in a superloop
+                    if self.ser.in_waiting:  # data available
+                        h2 = self.ser.read().encode('hex')  # read it
+                        if (h2 == h) and (h1 == h):  # check if got both headers
                             samples += 1
                             h1 = ''
-                            raw_data = self.ser.read(7)
-                            parsed_data = self._parse_raw(raw_data)
-                            if not nowrite and not docalibration:
+                            raw_data = self.ser.read(7)  # read the rest
+                            parsed_data = self._parse_raw(raw_data)  # parse it
+                            if not nowrite and not docalibration:  # write it
                                 output_line = self._format_output(parsed_data)
                                 output.write(output_line)
-                            else:
+                            else:  # something to do with docalibration
                                 output_line = '{},{},'.format(parsed_data[0],
                                                               parsed_data[1])
 
@@ -821,7 +863,7 @@ class IO_handler(object):
                             if docalibration:  # add newline if calibrating
                                 output_line += '\n'
                                 output.write(output_line)
-                        else:
+                        else:  # didn't get both headers. Try again.
                             h1 = h2
                 if not nowrite:
                     # clean up (stream stop) - close output file
@@ -841,6 +883,7 @@ class IO_handler(object):
         return
 
     def _parse_raw(self, raw_data):
+        """Parse the data packet. Does a lot of bit-shifting."""
         return [ord(raw_data[0]), ord(raw_data[1]),
                 ((ord(raw_data[6]) & 3) << 8) + ord(raw_data[2]),
                 ((ord(raw_data[6]) & 12) << 6) + ord(raw_data[3]),
@@ -880,6 +923,7 @@ class IO_handler(object):
                 header_line += line2
                 output.write(header_line)
         return output, filename
+
     # def init_chans(self):
     #     for ch in self.channels:
     #         dsp_thread = Thread(target=ch.read_in, args=())

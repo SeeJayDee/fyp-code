@@ -1,3 +1,14 @@
+# === keylib.py ===
+# * Function: contains keyboard event related functions.
+# *
+# * This is part of Christian D'Abrera's engineering final
+# * year project titled "EMG Bio-feedback for rehabilitation".
+# *
+# * Christian D'Abrera
+# * Curtin University 2017
+# * christian.dabrera@student.curtin.edu.au
+# * chrisdabrera@gmail.com
+
 """A library for the key-press related functions.
 
 Originally named 'keytest.py'.
@@ -102,6 +113,7 @@ def KeyDown(Key, raw=False):
 
 
 def loopKeys():
+    """Test to see if win32api is legit."""
     while(loop):
         KeyDown('LEFT')
         time.sleep(1.5)

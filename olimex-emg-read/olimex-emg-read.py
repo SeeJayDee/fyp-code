@@ -1,20 +1,13 @@
-# Desired function:
-# The program should first attempt to load the config file.
-# It should then open a new file ready for writing, named (emg-data-[[timestamp]])
-# It should print 'NUMCHANNELS=X' and 'SAMPFREQ=Y' as the first two lines.
-# Then the program needs to prompt the user for the serial port name (or take it
-# as a command line arg).
-# It should try to connect to the serial port, and immediately begin reading
-# bytes and immediately discarding them (to keep buffer empty) while record-data
-# is False.
-# Then it should prompt the user to start recording. Once recording it will exit
-# when a key is pressed.
-# Once the user starts recording, record-data is set to True.
-# While record-data is True, incoming bytes are read from the serial port. Once
-# the header is received, the data that follows is converted to 10-bit and read
-# into an array. Once the data from all channels is received, the contents of the
-# array will be printed as comma-separated values on a new line of the output
-# file, and the routine will revert to its initial state.
+# === olimex-emg-read.py ===
+# * Function: to set golbal variables and execute the main program.
+# *
+# * This is part of Christian D'Abrera's engineering final
+# * year project titled "EMG Bio-feedback for rehabilitation".
+# *
+# * Christian D'Abrera
+# * Curtin University 2017
+# * christian.dabrera@student.curtin.edu.au
+# * chrisdabrera@gmail.com
 
 # REPLACE SERIAL PORT FINDER WITH INBUILT FUNCTION
 # "python -m serial.tools.list_ports"
@@ -32,30 +25,15 @@ import classes as c
 
 # #### GLOBAL VARIABLES ####
 parser = argparse.ArgumentParser()
-parser.add_argument("port", help="the name of the serial port, ie \'COM3\' or \'/dev/ttyS0\'")
+parser.add_argument("port", help="the name of the serial \
+                                  port, ie \'COM3\' or \'/dev/ttyS0\'")
 parser.add_argument("-b", "--baudrate",
                     help="the serial baud rate, ie 19200, 57600, 115200",
                     type=int, default=115200)
-parser.add_argument("-N", "--nowrite", action="store_true")
+parser.add_argument("-N", "--nowrite", action="store_true")  # deprecated
 parser.add_argument("-R", "--raw_output", action="store_true")
 
-# config = {'sampfreq': 256,
-#           'datalen': 2048,
-#           'mainsfreq': 50,
-#           'notch_width': 1.0,
-#           'filt_order': 3,
-#           'raw_output': False,
-#           'title': 'EMG Grapher',
-#           'width': 1280,
-#           'height': 800,
-#           'plot_timer_ms': 50,
-#           'plot_names': ['L_AS', 'L_AP', 'R_AS', 'R_AP'],
-#           'indices': {'L_AS': 2, 'L_AP': 4, 'R_AS': 3, 'R_AP': 5}}
-#
-# cal = {'patterns': [['L_AS'], ['L_AP'], ['R_AS'], ['R_AP']],
-#        'repeats': 3,
-#        'intervals': [1., 2.]}
-
+# global parameters dict
 config = {'sampfreq': 256,  # sample freq, Hz
           'datalen': 4096,  # data queue length
           'mainsfreq': 50,  # local mains freq, Hz
@@ -77,8 +55,9 @@ config = {'sampfreq': 256,  # sample freq, Hz
                     'fi_ext': 'Extend Fingers'},
           'keys': None}
 
+prefixes = ['th', 'fi']  # plot name prefixes
 
-prefixes = ['th', 'fi']
+# part of unimplemented calibration functionality
 calcfg = {'repeats': 5,
     #    'intervals': [.1, .2]}
        'intervals': [1., 2.]}
@@ -86,6 +65,10 @@ config['calcfg'] = calcfg
 
 
 def populate_patterns(prefix_list, cal_cfg):
+    """ 'Populate calibration patterns'
+    Part of unimplemented feature to record EMG data while the user was asked
+    to follow a particular movement 'pattern'.
+    """
     cal_patterns = []
     mgroups = sorted(config['plot_names'])
     for m in mgroups:  # populate patterns for isolated channels FIRST
@@ -123,7 +106,8 @@ def serial_ports():
         from serial.tools.list_ports_posix import comports
     # ~ elif os.name == 'java':
     else:
-        raise ImportError("Sorry: no implementation for your platform ('{}') available".format(os.name))
+        raise ImportError("Sorry: no implementation for your platform \
+                          ('{}') available".format(os.name))
 
     result = []
     for (p, _, _) in sorted(comports()):
@@ -135,14 +119,18 @@ def _main():
     global config
     args = parser.parse_args()
     if args.port in serial_ports():
-        if args.raw_output:
+        if args.raw_output:  # set raw output flag
             config['raw_output'] = True
         channels = []
-        config['cal'] = populate_patterns(prefixes, calcfg)
+        config['cal'] = populate_patterns(prefixes, calcfg)  # unimplemented
+        # declare main window
         config['win'] = c.DisplayWindow(config)
+        # declare Channels
         for chname in config['plot_names']:
             channels.append(c.Channel(chname, config))
+        # ensure channel list is in correct order for data packet
         channels = sorted(channels, key=lambda ch: ch.idx)
+        # declare I/O handler
         config['handler'] = c.IO_handler(args.port, args.baudrate, channels)
         config['poller'] = Thread(target=config['handler'].poll_serial, args=())
         config['poller'].start()
@@ -153,10 +141,13 @@ def _main():
         # objgraph.show_backrefs([config['win']], filename='win_Brefs.png')
         # objgraph.show_backrefs([config['handler']], filename='io_Brefs.png')
         # objgraph.show_backrefs([channels[0]], filename='chan_Brefs.png')
-        QtGui.QApplication.instance().exec_()
+        QtGui.QApplication.instance().exec_()  # start Qt stuff
 
+        # main window exit returns control to here
+        # set termination flags
         config['handler'].do_polling = False
         config['handler'].kill_thread = True
+        # clean up
         while config['poller'].isAlive() or config['handler'].ser.is_open:
             sleep(0.1)
         for thread in config['handler'].dsp_threads:
