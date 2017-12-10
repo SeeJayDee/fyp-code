@@ -38,7 +38,7 @@
 
 //#define DUMMY // if defined, will output dummy data
 
-// Gloval constants and variables
+// Global constants and variables
 unsigned int OCRval = 0;          // OCR value for sampling freq
 volatile byte TXData[PACKET_SIZE]; // bytes to be transmitted
 volatile int ADC_val;     // current ADC val
